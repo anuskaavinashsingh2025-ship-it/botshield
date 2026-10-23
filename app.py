@@ -16,6 +16,9 @@ from backend.database.db import (
     upsert_session,
     VALID_EVENT_TYPES,
 )
+from backend.middleware.request_logger import init_request_logger
+from backend.enforcement import init_enforcement_middleware
+from backend.admin import admin_bp
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -38,6 +41,15 @@ app = Flask(
 
 # Initialise the database on startup
 init_db()
+
+# Initialise HTTP request logging & session correlation middleware (Phase 2B)
+init_request_logger(app)
+
+# Initialise risk-based enforcement middleware in safe MONITOR mode (Phase 6)
+init_enforcement_middleware(app)
+
+# Register Security Administrator Dashboard Blueprint (Phase 7)
+app.register_blueprint(admin_bp)
 
 # ---------------------------------------------------------------------------
 # Fake product catalogue (static data)
@@ -231,7 +243,7 @@ def product_detail(product_id):
     return render_template("product.html", product=product)
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
     return render_template("login.html")
 
@@ -239,6 +251,22 @@ def login():
 @app.route("/about")
 def about():
     return render_template("about.html")
+
+
+@app.route("/_test/crash")
+def _test_crash():
+    if not app.config.get("TESTING"):
+        abort(404)
+    raise RuntimeError("Simulated crash for testing")
+
+
+@app.route("/_test/redirect")
+def _test_redirect():
+    if not app.config.get("TESTING"):
+        abort(404)
+    from flask import redirect
+    return redirect("/products", code=302)
+
 
 
 # ---------------------------------------------------------------------------

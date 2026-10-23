@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BotShield – Security Operations Center</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* Admin SOC Dashboard Styles */
+    body {
+      background-color: #0e0e10;
+      color: #f0f0f2;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .admin-navbar {
+      background: #18181b;
+      border-bottom: 1px solid #27272a;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .admin-navbar__brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: #ffffff;
+      text-decoration: none;
+    }
+    .badge-soc {
+      background: rgba(197, 106, 50, 0.2);
+      border: 1px solid #c56a32;
+      color: #c56a32;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .admin-navbar__actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .btn-soc-sm {
+      background: #27272a;
+      color: #d4d4d8;
+      border: 1px solid #3f3f46;
+      padding: 0.45rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+    .btn-soc-sm:hover {
+      background: #3f3f46;
+      color: #ffffff;
+    }
+    .btn-logout {
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-logout:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+    }
+    .dashboard-container {
+      max-width: 1300px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 2rem;
+    }
+    .dashboard-header h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      color: #ffffff;
+    }
+    .dashboard-header p {
+      margin: 0.35rem 0 0 0;
+      color: #a1a1aa;
+      font-size: 0.9rem;
+    }
+    /* Grid Overview Cards */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .metric-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    .metric-card__title {
+      font-size: 0.85rem;
+      color: #a1a1aa;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+    .metric-card__value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .metric-card__sub {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      color: #71717a;
+    }
+    .metric-card.alert .metric-card__value {
+      color: #ef4444;
+    }
+    /* Distribution & Modes Section */
+    .insights-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 900px) {
+      .insights-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .insight-panel {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .insight-panel h2 {
+      font-size: 1.1rem;
+      margin: 0 0 1.25rem 0;
+      color: #ffffff;
+    }
+    .distribution-bar {
+      display: flex;
+      height: 14px;
+      border-radius: 7px;
+      overflow: hidden;
+      margin-bottom: 1.25rem;
+      background: #27272a;
+    }
+    .dist-segment {
+      height: 100%;
+      transition: width 0.3s;
+    }
+    .dist-segment.low { background: #22c55e; }
+    .dist-segment.med { background: #f59e0b; }
+    .dist-segment.high { background: #ef4444; }
+    .dist-segment.unassessed { background: #52525b; }
+    .dist-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+    }
+    .dist-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .modes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .mode-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #27272a;
+      font-size: 0.9rem;
+    }
+    .mode-item:last-child {
+      border-bottom: none;
+    }
+    /* Sessions Table Section */
+    .table-panel {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .filter-group {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .btn-filter {
+      background: #27272a;
+      color: #a1a1aa;
+      border: 1px solid #3f3f46;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-filter.active {
+      background: #c56a32;
+      color: #ffffff;
+      border-color: #c56a32;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.875rem;
+    }
+    .data-table th {
+      background: #202024;
+      color: #a1a1aa;
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #27272a;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .data-table td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid #27272a;
+      color: #d4d4d8;
+    }
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .risk-badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+    .risk-badge.LOW { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .risk-badge.MEDIUM { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .risk-badge.HIGH { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .risk-badge.UNASSESSED { background: rgba(113, 113, 122, 0.15); color: #a1a1aa; border: 1px solid rgba(113, 113, 122, 0.3); }
+    .mono {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #e4e4e7;
+    }
+    .pagination-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.25rem;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+    .pagination-controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+    /* Modal Detail View */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .modal-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 780px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
+    }
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid #27272a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h3 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #ffffff;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #a1a1aa;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .modal-close:hover { color: #ffffff; }
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .reasons-list {
+      margin: 0.5rem 0;
+      padding-left: 1.25rem;
+      color: #fbbf24;
+      font-size: 0.9rem;
+    }
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .tag {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.8rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #71717a;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========== SOC NAVBAR ========== -->
+  <header class="admin-navbar">
+    <a href="/admin/dashboard" class="admin-navbar__brand">
+      BotShield
+      <span class="badge-soc">SOC DASHBOARD</span>
+    </a>
+    <div class="admin-navbar__actions">
+      <a href="/" target="_blank" class="btn-soc-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Storefront
+      </a>
+      <button class="btn-soc-sm" id="btn-refresh" onclick="loadDashboardData()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+      <a href="/admin/logout" class="btn-soc-sm btn-logout">Logout</a>
+    </div>
+  </header>
+
+  <!-- ========== MAIN DASHBOARD ========== -->
+  <main class="dashboard-container">
+    <div class="dashboard-header">
+      <div>
+        <h1>Security Operations Center</h1>
+        <p>Live threat detection, session risk distribution, and behavioral telemetry analytics.</p>
+      </div>
+      <div id="last-updated" style="font-size: 0.8rem; color: #71717a;">Connecting...</div>
+    </div>
+
+    <!-- METRICS OVERVIEW -->
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-card__title">Total Sessions</div>
+        <div class="metric-card__value" id="val-total-sessions">-</div>
+        <div class="metric-card__sub" id="val-unassessed-sessions">0 unassessed</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__title">Total Requests Logged</div>
+        <div class="metric-card__value" id="val-total-requests">-</div>
+        <div class="metric-card__sub">Server-observed traffic</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__title">Telemetry Events</div>
+        <div class="metric-card__value" id="val-total-events">-</div>
+        <div class="metric-card__sub">Browser interaction records</div>
+      </div>
+      <div class="metric-card alert">
+        <div class="metric-card__title">High Risk Sessions</div>
+        <div class="metric-card__value" id="val-high-risk">-</div>
+        <div class="metric-card__sub" id="val-high-risk-sub">Score &ge; 70.0</div>
+      </div>
+    </div>
+
+    <!-- INSIGHTS & MODES -->
+    <div class="insights-grid">
+      <div class="insight-panel">
+        <h2>Risk Level Distribution</h2>
+        <div class="distribution-bar" id="dist-bar">
+          <div class="dist-segment low" id="bar-low" style="width: 0%"></div>
+          <div class="dist-segment med" id="bar-med" style="width: 0%"></div>
+          <div class="dist-segment high" id="bar-high" style="width: 0%"></div>
+          <div class="dist-segment unassessed" id="bar-unassessed" style="width: 100%"></div>
+        </div>
+        <div class="dist-legend">
+          <div class="dist-item"><span class="dot" style="background: #22c55e;"></span> Low Risk: <strong id="lbl-low">0</strong></div>
+          <div class="dist-item"><span class="dot" style="background: #f59e0b;"></span> Medium Risk: <strong id="lbl-med">0</strong></div>
+          <div class="dist-item"><span class="dot" style="background: #ef4444;"></span> High Risk: <strong id="lbl-high">0</strong></div>
+          <div class="dist-item"><span class="dot" style="background: #52525b;"></span> Unassessed: <strong id="lbl-unassessed">0</strong></div>
+        </div>
+      </div>
+
+      <div class="insight-panel">
+        <h2>Evaluation Modes</h2>
+        <div class="modes-list">
+          <div class="mode-item">
+            <span>Hybrid (FSM + ML)</span>
+            <strong id="mode-hybrid" style="color: #60a5fa;">0</strong>
+          </div>
+          <div class="mode-item">
+            <span>FSM-Only Fallback</span>
+            <strong id="mode-fsm-only" style="color: #fbbf24;">0</strong>
+          </div>
+          <div class="mode-item">
+            <span>Insufficient Evidence</span>
+            <strong id="mode-insufficient" style="color: #9ca3af;">0</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESSIONS TABLE -->
+    <div class="table-panel">
+      <div class="table-toolbar">
+        <div class="filter-group">
+          <button class="btn-filter active" onclick="setRiskFilter('ALL', this)">All Sessions</button>
+          <button class="btn-filter" onclick="setRiskFilter('HIGH', this)">High Risk</button>
+          <button class="btn-filter" onclick="setRiskFilter('MEDIUM', this)">Medium Risk</button>
+          <button class="btn-filter" onclick="setRiskFilter('LOW', this)">Low Risk</button>
+          <button class="btn-filter" onclick="setRiskFilter('UNASSESSED', this)">Unassessed</button>
+        </div>
+        <div>
+          <label for="limit-select" style="font-size: 0.8rem; color: #a1a1aa; margin-right: 0.5rem;">Show:</label>
+          <select id="limit-select" onchange="changeLimit(this.value)" style="background: #27272a; color: #ffffff; border: 1px solid #3f3f46; border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.8rem;">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Session Identifier</th>
+            <th>Composite Score</th>
+            <th>Classification</th>
+            <th>Mode</th>
+            <th>Events</th>
+            <th>Requests</th>
+            <th>Last Active (UTC)</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-tbody">
+          <tr>
+            <td colspan="8" class="empty-state">Loading recorded session activity...</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="pagination-bar">
+        <span id="pagination-info">Showing 0 of 0 sessions</span>
+        <div class="pagination-controls">
+          <button class="btn-soc-sm" id="btn-prev" onclick="prevPage()" disabled>&larr; Previous</button>
+          <button class="btn-soc-sm" id="btn-next" onclick="nextPage()" disabled>Next &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== INSPECTION MODAL ========== -->
+  <div class="modal-backdrop" id="inspect-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Session Security Diagnostics</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        Loading session diagnostics...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let currentFilter = 'ALL';
+    let currentLimit = 25;
+    let currentOffset = 0;
+    let totalSessionsCount = 0;
+
+    // Load initial data
+    document.addEventListener("DOMContentLoaded", () => {
+      loadDashboardData();
+    });
+
+    async function loadDashboardData() {
+      await Promise.all([loadStats(), loadSessions()]);
+      document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch("/admin/api/stats");
+        if (!res.ok) throw new Error("Stats request failed");
+        const data = await res.json();
+        if (!data.ok) return;
+
+        const s = data.stats;
+        document.getElementById("val-total-sessions").textContent = s.total_sessions.toLocaleString();
+        document.getElementById("val-unassessed-sessions").textContent = s.unassessed_sessions + " unassessed";
+        document.getElementById("val-total-requests").textContent = s.total_requests.toLocaleString();
+        document.getElementById("val-total-events").textContent = s.total_events.toLocaleString();
+        document.getElementById("val-high-risk").textContent = s.risk_distribution.high.toLocaleString();
+
+        // Legend values
+        document.getElementById("lbl-low").textContent = s.risk_distribution.low;
+        document.getElementById("lbl-med").textContent = s.risk_distribution.medium;
+        document.getElementById("lbl-high").textContent = s.risk_distribution.high;
+        document.getElementById("lbl-unassessed").textContent = s.risk_distribution.unassessed;
+
+        // Modes
+        document.getElementById("mode-hybrid").textContent = s.scoring_modes.hybrid;
+        document.getElementById("mode-fsm-only").textContent = s.scoring_modes.fsm_only;
+        document.getElementById("mode-insufficient").textContent = s.scoring_modes.insufficient_evidence;
+
+        // Distribution bar calculation
+        const total = s.total_sessions || 1;
+        document.getElementById("bar-low").style.width = ((s.risk_distribution.low / total) * 100) + "%";
+        document.getElementById("bar-med").style.width = ((s.risk_distribution.medium / total) * 100) + "%";
+        document.getElementById("bar-high").style.width = ((s.risk_distribution.high / total) * 100) + "%";
+        document.getElementById("bar-unassessed").style.width = ((s.risk_distribution.unassessed / total) * 100) + "%";
+      } catch (err) {
+        console.error("Failed to load dashboard metrics:", err);
+      }
+    }
+
+    async function loadSessions() {
+      const tbody = document.getElementById("sessions-tbody");
+      try {
+        let url = `/admin/api/sessions?limit=${currentLimit}&offset=${currentOffset}`;
+        if (currentFilter !== 'ALL') {
+          url += `&risk_level=${currentFilter}`;
+        }
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Session fetch failed");
+        const data = await res.json();
+        if (!data.ok) return;
+
+        totalSessionsCount = data.total;
+        renderSessionsTable(data.sessions);
+        updatePaginationInfo();
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: #ef4444;">Failed to load sessions. Please try refreshing.</td></tr>`;
+      }
+    }
+
+    function renderSessionsTable(sessions) {
+      const tbody = document.getElementById("sessions-tbody");
+      tbody.innerHTML = "";
+
+      if (!sessions || sessions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No matching sessions recorded in database.</td></tr>`;
+        return;
+      }
+
+      sessions.forEach(s => {
+        const tr = document.createElement("tr");
+
+        // Session ID
+        const tdId = document.createElement("td");
+        tdId.className = "mono";
+        tdId.textContent = s.session_id.substring(0, 16) + "…";
+        tdId.title = s.session_id;
+        tr.appendChild(tdId);
+
+        // Score
+        const tdScore = document.createElement("td");
+        tdScore.textContent = s.composite_score !== null ? s.composite_score.toFixed(1) : "—";
+        tr.appendChild(tdScore);
+
+        // Classification Badge
+        const tdLevel = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = `risk-badge ${s.risk_level}`;
+        badge.textContent = s.risk_level;
+        tdLevel.appendChild(badge);
+        tr.appendChild(tdLevel);
+
+        // Mode
+        const tdMode = document.createElement("td");
+        tdMode.textContent = s.scoring_mode || "—";
+        tr.appendChild(tdMode);
+
+        // Events count
+        const tdEvents = document.createElement("td");
+        tdEvents.textContent = s.event_count;
+        tr.appendChild(tdEvents);
+
+        // Requests count
+        const tdReqs = document.createElement("td");
+        tdReqs.textContent = s.request_count;
+        tr.appendChild(tdReqs);
+
+        // Last Active
+        const tdTime = document.createElement("td");
+        tdTime.textContent = s.last_seen ? s.last_seen.replace("T", " ").substring(0, 19) : "—";
+        tr.appendChild(tdTime);
+
+        // Inspect Button
+        const tdAct = document.createElement("td");
+        const btnInspect = document.createElement("button");
+        btnInspect.className = "btn-soc-sm";
+        btnInspect.textContent = "Inspect";
+        btnInspect.onclick = () => inspectSession(s.session_id);
+        tdAct.appendChild(btnInspect);
+        tr.appendChild(tdAct);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updatePaginationInfo() {
+      const start = totalSessionsCount === 0 ? 0 : currentOffset + 1;
+      const end = Math.min(currentOffset + currentLimit, totalSessionsCount);
+      document.getElementById("pagination-info").textContent = `Showing ${start}–${end} of ${totalSessionsCount} sessions`;
+
+      document.getElementById("btn-prev").disabled = currentOffset <= 0;
+      document.getElementById("btn-next").disabled = currentOffset + currentLimit >= totalSessionsCount;
+    }
+
+    function setRiskFilter(filter, btn) {
+      currentFilter = filter;
+      currentOffset = 0;
+      document.querySelectorAll(".btn-filter").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadSessions();
+    }
+
+    function changeLimit(val) {
+      currentLimit = parseInt(val, 10);
+      currentOffset = 0;
+      loadSessions();
+    }
+
+    function prevPage() {
+      if (currentOffset > 0) {
+        currentOffset = Math.max(0, currentOffset - currentLimit);
+        loadSessions();
+      }
+    }
+
+    function nextPage() {
+      if (currentOffset + currentLimit < totalSessionsCount) {
+        currentOffset += currentLimit;
+        loadSessions();
+      }
+    }
+
+    async function inspectSession(sessionId) {
+      const modal = document.getElementById("inspect-modal");
+      const content = document.getElementById("modal-content");
+      modal.classList.add("open");
+      content.innerHTML = `<div class="empty-state">Loading diagnostics for ${sessionId}…</div>`;
+
+      try {
+        const res = await fetch(`/admin/api/sessions/${encodeURIComponent(sessionId)}`);
+        if (!res.ok) throw new Error("Failed to load session details");
+        const data = await res.json();
+        if (!data.ok) return;
+
+        const s = data.session;
+        const r = s.risk_assessment;
+
+        let reasonsHtml = "<p style='color: #71717a; font-size: 0.85rem;'>None detected (clean human browsing pattern).</p>";
+        if (r.reasons && r.reasons.length > 0) {
+          reasonsHtml = `<ul class="reasons-list">` + r.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("") + `</ul>`;
+        }
+
+        let eventsTagHtml = "";
+        for (const [k, v] of Object.entries(s.telemetry_summary.event_counts_by_type)) {
+          eventsTagHtml += `<span class="tag">${escapeHtml(k)}: <strong>${v}</strong></span>`;
+        }
+        if (!eventsTagHtml) eventsTagHtml = "<span style='color: #71717a; font-size: 0.85rem;'>No browser telemetry recorded</span>";
+
+        let requestsHtml = "";
+        s.request_summary.breakdown.forEach(item => {
+          requestsHtml += `<span class="tag">${escapeHtml(item.method)} ${item.status_code}: <strong>${item.count}</strong></span>`;
+        });
+        if (!requestsHtml) requestsHtml = "<span style='color: #71717a; font-size: 0.85rem;'>No server requests logged</span>";
+
+        content.innerHTML = `
+          <div style="margin-bottom: 1.5rem;">
+            <div style="font-size: 0.8rem; color: #a1a1aa; text-transform: uppercase;">Session ID</div>
+            <div class="mono" style="font-size: 1rem; color: #ffffff; word-break: break-all;">${escapeHtml(s.session_id)}</div>
+            <div style="font-size: 0.8rem; color: #71717a; margin-top: 0.25rem;">
+              First seen: ${escapeHtml(s.created_at)} &bull; Last active: ${escapeHtml(s.last_seen)}
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: #202024; padding: 1rem; border-radius: 6px;">
+              <div style="font-size: 0.8rem; color: #a1a1aa;">Risk Assessment</div>
+              <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                <span class="risk-badge ${r.risk_level}">${r.risk_level}</span>
+                <span style="font-size: 1.25rem; font-weight: 700; color: #ffffff;">${r.composite_score !== null ? r.composite_score.toFixed(1) : "—"}</span>
+                <span style="font-size: 0.8rem; color: #71717a;">/ 100.0</span>
+              </div>
+              <div style="font-size: 0.8rem; color: #a1a1aa; margin-top: 0.5rem;">
+                FSM Score: ${r.fsm_score !== null ? r.fsm_score.toFixed(4) : "—"} &bull; ML Score: ${r.ml_score !== null ? r.ml_score.toFixed(4) : "—"}
+              </div>
+            </div>
+
+            <div style="background: #202024; padding: 1rem; border-radius: 6px;">
+              <div style="font-size: 0.8rem; color: #a1a1aa;">Evaluation Mode</div>
+              <div style="font-size: 1rem; font-weight: 600; color: #ffffff; margin-top: 0.25rem;">
+                ${escapeHtml(r.scoring_mode || "UNASSESSED")}
+              </div>
+              <div style="font-size: 0.8rem; color: #71717a; margin-top: 0.5rem;">
+                Total Events: ${s.telemetry_summary.total_events} &bull; Requests: ${s.request_summary.total_requests}
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">Explainability Factors & Flags</div>
+            ${reasonsHtml}
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">Telemetry Activity Profile</div>
+            <div class="tag-container">${eventsTagHtml}</div>
+          </div>
+
+          <div>
+            <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">HTTP Request Method Breakdown</div>
+            <div class="tag-container">${requestsHtml}</div>
+          </div>
+        `;
+      } catch (err) {
+        content.innerHTML = `<div class="empty-state" style="color: #ef4444;">Failed to load session detail.</div>`;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("inspect-modal").classList.remove("open");
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

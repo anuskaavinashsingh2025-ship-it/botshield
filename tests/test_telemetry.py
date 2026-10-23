@@ -273,3 +273,14 @@ def test_page_exit_event(client, _use_temp_db):
     conn.close()
     assert len(events) == 1
     assert events[0]["page"] == "/products"
+
+
+def test_tracker_script_deduplicates_exit_handlers(client):
+    """Verify static tracker.js contains exitHandled guard to prevent duplicate PAGE_EXIT beacons."""
+    resp = client.get("/static/js/tracker.js")
+    assert resp.status_code == 200
+    js_text = resp.get_data(as_text=True)
+    assert "exitHandled" in js_text
+    assert "visibilitychange" in js_text
+    assert "pagehide" in js_text
+    assert "pageshow" in js_text
