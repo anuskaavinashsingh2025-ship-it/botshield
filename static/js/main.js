@@ -109,3 +109,43 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
 });
+
+// ----------------------------------------------------------------
+// BotShield Monitor (Step 5.1)
+// ----------------------------------------------------------------
+function updateBotShieldMonitor() {
+  const monitorEl = document.getElementById('botshield-monitor');
+  if (!monitorEl) return;
+
+  fetch('/api/automata/status')
+    .then(res => res.json())
+    .then(data => {
+      const stateEl = document.getElementById('monitor-state');
+      const scoreEl = document.getElementById('monitor-score');
+      const riskEl = document.getElementById('monitor-risk');
+      const signalsEl = document.getElementById('monitor-signals');
+
+      if (stateEl) stateEl.textContent = data.state || 'START';
+      if (scoreEl && typeof data.score === 'number') {
+        scoreEl.textContent = data.score.toFixed(2) + ' / 1.00';
+      }
+      if (riskEl) riskEl.textContent = data.risk_level || 'LOW';
+
+      if (signalsEl) {
+        signalsEl.innerHTML = '';
+        const reasons = data.reasons || ["No behavioral activity recorded yet"];
+        reasons.forEach(reason => {
+          const li = document.createElement('li');
+          li.textContent = reason;
+          signalsEl.appendChild(li);
+        });
+      }
+    })
+    .catch(err => console.error("Monitor poll error:", err));
+}
+
+// Start polling if monitor is present
+if (document.getElementById('botshield-monitor')) {
+  updateBotShieldMonitor();
+  setInterval(updateBotShieldMonitor, 1500);
+}
