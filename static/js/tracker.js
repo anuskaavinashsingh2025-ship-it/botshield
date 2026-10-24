@@ -46,38 +46,21 @@
 
   function getSessionId() {
     var id;
-
-    // 1. Check for server-issued session cookie
-    try {
-      var match = document.cookie.match(/(?:^|;\s*)botshield_session=([a-f0-9\-]{20,50})/);
-      if (match && match[1]) {
-        id = match[1];
-        try { localStorage.setItem(SESSION_KEY, id); } catch (e) {}
-        return id;
-      }
-    } catch (e) {}
-
-    // 2. Check localStorage
     try {
       id = localStorage.getItem(SESSION_KEY);
     } catch (e) {
       // localStorage blocked
     }
-
-    // 3. Fallback: generate new session ID
     if (!id) {
       id = generateId();
       try { localStorage.setItem(SESSION_KEY, id); } catch (e) {}
     }
 
-    // 4. Synchronize to cookie for server-side request correlation
-    try {
-      document.cookie = "botshield_session=" + id + "; path=/; SameSite=Lax";
-    } catch (e) {}
+    // Set first-party cookie for server-side request telemetry
+    document.cookie = SESSION_KEY + "=" + id + "; path=/; max-age=31536000; SameSite=Lax";
 
     return id;
   }
-
 
   var sessionId = getSessionId();
   var currentPage = window.location.pathname;
@@ -215,11 +198,7 @@
   // ----------------------------------------------------------------
   // PAGE_EXIT
   // ----------------------------------------------------------------
-  var exitHandled = false;
-
   function handleExit() {
-    if (exitHandled) return;
-    exitHandled = true;
     enqueue("PAGE_EXIT");
     flush();
   }
@@ -227,16 +206,10 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") {
       handleExit();
-    } else if (document.visibilityState === "visible") {
-      exitHandled = false;
     }
   });
 
   window.addEventListener("pagehide", handleExit);
-
-  window.addEventListener("pageshow", function () {
-    exitHandled = false;
-  });
 
   // Also flush on normal unload as a fallback
   window.addEventListener("beforeunload", function () {
