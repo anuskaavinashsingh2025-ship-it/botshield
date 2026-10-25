@@ -30,6 +30,7 @@ from backend.database.db import (
     get_connection,
     get_events,
     get_requests,
+    insert_risk_history,
     upsert_session_risk,
 )
 from backend.detection.fsm import FSMConfig, FSMResult
@@ -40,6 +41,14 @@ from backend.ml.model import (
 )
 
 logger = logging.getLogger("botshield.scoring.service")
+
+# Score contract (see docs/hybrid_scoring.md). Every score is in [0, 1] and
+# higher always means more bot-like.
+#   HYBRID:                H = fsm_weight * FSM + ml_weight * ML   (ML available)
+#   FSM_ONLY:              H = FSM                                  (ML unavailable)
+#   INSUFFICIENT_EVIDENCE: H = 0                                    (no activity)
+# Classification uses H * 100 against HybridConfig.low/high_threshold.
+HYBRID_FORMULA = "H = 0.60 * FSM + 0.40 * ML (HYBRID); H = FSM (FSM_ONLY); H = 0 (INSUFFICIENT_EVIDENCE)"
 
 
 def _now_iso() -> str:
@@ -148,6 +157,7 @@ class HybridRiskResult:
                 "status": self.ml_result.status.value,
                 "anomaly_score": self.ml_result.anomaly_score,
                 "is_anomaly": self.ml_result.is_anomaly,
+                "decision_threshold": self.ml_result.model_metadata.get("decision_threshold"),
                 "feature_summary": self.ml_result.feature_summary,
             },
         }
@@ -297,19 +307,7 @@ def evaluate_session_risk(
         )
 
         if persist:
-            write_conn = get_connection(db_path)
-            try:
-                upsert_session_risk(
-                    conn=write_conn,
-                    session_id=clean_session_id,
-                    risk_score=0.0,
-                    fsm_score=0.0,
-                    ml_score=None,
-                    reasons=[],
-                )
-                write_conn.commit()
-            finally:
-                write_conn.close()
+            _persist_result(result, db_path)
 
         return result
 
@@ -376,25 +374,47 @@ def evaluate_session_risk(
 
     # Step 7: Explicit persistence into session_risks table if requested
     if persist:
-        write_conn = get_connection(db_path)
-        try:
-            upsert_session_risk(
-                conn=write_conn,
-                session_id=clean_session_id,
-                risk_score=norm_score,
-                fsm_score=fsm_res.risk_score,
-                ml_score=effective_ml_score,
-                reasons=combined_reasons,
-            )
-            write_conn.commit()
-            logger.info(
-                "Persisted hybrid risk score %.4f (composite %.1f, %s) for session %s",
-                norm_score,
-                comp_score,
-                risk_level.value,
-                clean_session_id,
-            )
-        finally:
-            write_conn.close()
+        _persist_result(result, db_path)
+        logger.info(
+            "Persisted hybrid risk score %.4f (composite %.1f, %s) for session %s",
+            norm_score,
+            comp_score,
+            risk_level.value,
+            clean_session_id,
+        )
 
     return result
+
+
+def _persist_result(result: HybridRiskResult, db_path: str | None) -> None:
+    """Upsert the latest scores into session_risks and append a history row."""
+    ml_available = result.ml_score is not None
+    write_conn = get_connection(db_path)
+    try:
+        upsert_session_risk(
+            conn=write_conn,
+            session_id=result.session_id,
+            risk_score=result.normalized_score,
+            fsm_score=result.fsm_score,
+            ml_score=result.ml_score,
+            reasons=result.reasons,
+            scoring_mode=result.scoring_mode.value,
+            ml_status=result.model_status.value,
+            fsm_state=result.fsm_result.final_state.value,
+            # Only meaningful when ML actually scored real activity
+            ml_is_anomaly=result.ml_result.is_anomaly if ml_available else None,
+        )
+        insert_risk_history(
+            write_conn,
+            session_id=result.session_id,
+            fsm_score=result.fsm_score,
+            ml_score=result.ml_score,
+            hybrid_score=result.normalized_score,
+            risk_level=result.risk_level.value,
+            scoring_mode=result.scoring_mode.value,
+            ml_status=result.model_status.value,
+            fsm_state=result.fsm_result.final_state.value,
+        )
+        write_conn.commit()
+    finally:
+        write_conn.close()

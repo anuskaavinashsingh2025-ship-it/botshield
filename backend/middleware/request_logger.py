@@ -39,6 +39,14 @@ logger = logging.getLogger("botshield.request_logger")
 SESSION_ID_PATTERN = re.compile(r"^[a-f0-9\-]{20,50}$")
 DEFAULT_COOKIE_NAME = "botshield_session"
 
+# Internal polling that is not visitor traffic: the Monitor panel calls these
+# every 1.5 s. Excluded regardless of REQUEST_LOGGING_EXCLUDE_PATHS, so the
+# panel never feeds its own polling into FSM/ML features as "requests".
+ALWAYS_EXCLUDED_PATHS = frozenset({"/api/automata/status", "/api/risk/current"})
+# The admin dashboard polls its JSON APIs every 15 s; that is operator traffic,
+# not the browsing behavior of whichever storefront session shares the cookie.
+ALWAYS_EXCLUDED_PREFIXES = ("/admin/api/",)
+
 
 def is_valid_session_id(session_id: str | None) -> bool:
     """Validate format of session ID string."""
@@ -99,8 +107,12 @@ def should_exclude_path(path: str) -> bool:
     Excludes:
     - Static assets (configurable via REQUEST_LOGGING_EXCLUDE_STATIC)
     - Custom excluded paths (REQUEST_LOGGING_EXCLUDE_PATHS)
+    - Internal monitor polling (ALWAYS_EXCLUDED_PATHS)
     """
     if not current_app.config.get("REQUEST_LOGGING_ENABLED", True):
+        return True
+
+    if path in ALWAYS_EXCLUDED_PATHS or path.startswith(ALWAYS_EXCLUDED_PREFIXES):
         return True
 
     static_url = current_app.static_url_path or "/static"
@@ -164,7 +176,9 @@ def log_request_record(status_code: int) -> None:
     verified_session_id = None
 
     try:
-        conn = get_connection()
+        # Honour app.config["BOTSHIELD_DB"] like the admin, enforcement and
+        # scoring components; falls back to the BOTSHIELD_DB env var / default.
+        conn = get_connection(current_app.config.get("BOTSHIELD_DB"))
         try:
             if candidate_session_id:
                 verified_session_id = get_verified_session_id(conn, candidate_session_id)

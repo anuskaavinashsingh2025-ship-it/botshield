@@ -46,21 +46,41 @@
 
   function getSessionId() {
     var id;
+
+    // 1. Check for server-issued session cookie
     try {
-      id = localStorage.getItem(SESSION_KEY);
-    } catch (e) {
-      // localStorage blocked
+      var match = document.cookie.match(/(?:^|;\s*)botshield_session=([a-f0-9\-]{20,50})/);
+      if (match && match[1]) {
+        id = match[1];
+        try { localStorage.setItem(SESSION_KEY, id); } catch (e) {}
+      }
+    } catch (e) {}
+
+    // 2. Check localStorage
+    if (!id) {
+      try {
+        id = localStorage.getItem(SESSION_KEY);
+      } catch (e) {
+        // localStorage blocked
+      }
     }
+
+    // 3. Fallback: generate new session ID
     if (!id) {
       id = generateId();
       try { localStorage.setItem(SESSION_KEY, id); } catch (e) {}
     }
 
-    // Set first-party cookie for server-side request telemetry
-    document.cookie = SESSION_KEY + "=" + id + "; path=/; max-age=31536000; SameSite=Lax";
+    // 4. Synchronize to cookies for server-side request correlation
+    //    (botshield_session) and the live automata monitor (botshield_session_id)
+    try {
+      document.cookie = "botshield_session=" + id + "; path=/; SameSite=Lax";
+      document.cookie = SESSION_KEY + "=" + id + "; path=/; max-age=31536000; SameSite=Lax";
+    } catch (e) {}
 
     return id;
   }
+
 
   var sessionId = getSessionId();
   var currentPage = window.location.pathname;
@@ -198,7 +218,11 @@
   // ----------------------------------------------------------------
   // PAGE_EXIT
   // ----------------------------------------------------------------
+  var exitHandled = false;
+
   function handleExit() {
+    if (exitHandled) return;
+    exitHandled = true;
     enqueue("PAGE_EXIT");
     flush();
   }
@@ -206,10 +230,16 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") {
       handleExit();
+    } else if (document.visibilityState === "visible") {
+      exitHandled = false;
     }
   });
 
   window.addEventListener("pagehide", handleExit);
+
+  window.addEventListener("pageshow", function () {
+    exitHandled = false;
+  });
 
   // Also flush on normal unload as a fallback
   window.addEventListener("beforeunload", function () {

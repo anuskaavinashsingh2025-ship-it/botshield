@@ -30,6 +30,9 @@ def get_pending_sessions(conn: sqlite3.Connection, limit: int = 50) -> List[str]
     A session requires evaluation if:
     1. It has never been evaluated (no entry in session_risks).
     2. It has observed new activity since its last evaluation (last_seen > updated_at).
+    3. It has server requests logged since its last evaluation. last_seen only
+       moves with browser telemetry, so request-only traffic (e.g. clients that
+       do not run tracker.js) would otherwise never be re-scored.
 
     Parameters:
         conn: SQLite connection.
@@ -42,7 +45,12 @@ def get_pending_sessions(conn: sqlite3.Connection, limit: int = 50) -> List[str]
         SELECT s.session_id
         FROM sessions s
         LEFT JOIN session_risks sr ON s.session_id = sr.session_id
-        WHERE sr.session_id IS NULL OR s.last_seen > sr.updated_at
+        WHERE sr.session_id IS NULL
+           OR s.last_seen > sr.updated_at
+           OR EXISTS (
+               SELECT 1 FROM requests r
+               WHERE r.session_id = s.session_id AND r.timestamp > sr.updated_at
+           )
         ORDER BY s.last_seen DESC
         LIMIT ?
     """

@@ -111,30 +111,62 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // ----------------------------------------------------------------
-// BotShield Monitor (Step 5.1)
+// BotShield Monitor (Step 5.1, hybrid FSM + ML scores)
 // ----------------------------------------------------------------
+function setMonitorText(id, text, unavailable) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('monitor-val--na', !!unavailable);
+}
+
+function formatMonitorScore(value) {
+  return typeof value === 'number' ? value.toFixed(2) : '—';
+}
+
 function updateBotShieldMonitor() {
   const monitorEl = document.getElementById('botshield-monitor');
   if (!monitorEl) return;
 
-  fetch('/api/automata/status')
+  fetch('/api/risk/current', { credentials: 'same-origin' })
     .then(res => res.json())
     .then(data => {
-      const stateEl = document.getElementById('monitor-state');
-      const scoreEl = document.getElementById('monitor-score');
-      const riskEl = document.getElementById('monitor-risk');
+      // Last payload, for checking the panel against the backend
+      window.__botshieldRisk = data;
       const signalsEl = document.getElementById('monitor-signals');
 
-      if (stateEl) stateEl.textContent = data.state || 'START';
-      if (scoreEl && typeof data.score === 'number') {
-        scoreEl.textContent = data.score.toFixed(2) + ' / 1.00';
+      if (!data.available) {
+        setMonitorText('monitor-fsm', '—', true);
+        setMonitorText('monitor-ml', '—', true);
+        setMonitorText('monitor-hybrid', '—', true);
+        setMonitorText('monitor-mode', data.message || 'Waiting for activity', true);
+        if (signalsEl) signalsEl.innerHTML = '<li>No behavioral activity recorded yet</li>';
+        return;
       }
-      if (riskEl) riskEl.textContent = data.risk_level || 'LOW';
+
+      setMonitorText('monitor-fsm', formatMonitorScore(data.fsm.score));
+      if (data.ml.active) {
+        setMonitorText('monitor-ml', formatMonitorScore(data.ml.score));
+      } else {
+        // Never show a placeholder ML number when the model did not run
+        setMonitorText('monitor-ml', 'N/A', true);
+      }
+      setMonitorText('monitor-hybrid', formatMonitorScore(data.hybrid.score));
+      setMonitorText('monitor-risk', data.hybrid.risk_level);
+      setMonitorText('monitor-mode', data.ml.active
+        ? data.hybrid.scoring_mode
+        : data.hybrid.scoring_mode + ' (ML ' + data.ml.status + ')');
+      setMonitorText('monitor-state', data.fsm.state);
+      setMonitorText('monitor-score', typeof data.automata.score === 'number'
+        ? data.automata.state + ' · ' + data.automata.score.toFixed(2)
+        : data.automata.state);
 
       if (signalsEl) {
         signalsEl.innerHTML = '';
-        const reasons = data.reasons || ["No behavioral activity recorded yet"];
-        reasons.forEach(reason => {
+        const reasons = data.reasons && data.reasons.length
+          ? data.reasons
+          : ['No suspicious behavior detected'];
+        reasons.slice(0, 5).forEach(reason => {
           const li = document.createElement('li');
           li.textContent = reason;
           signalsEl.appendChild(li);

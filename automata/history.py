@@ -31,6 +31,10 @@ def get_session_context(session_id: str) -> SessionContext:
         _ACTIVE_SESSIONS[session_id] = SessionContext(session_id)
     return _ACTIVE_SESSIONS[session_id]
 
+def find_session_context(session_id: str) -> SessionContext | None:
+    """Return the session's context if it exists, without creating one."""
+    return _ACTIVE_SESSIONS.get(session_id)
+
 def clear_session_context(session_id: str):
     if session_id in _ACTIVE_SESSIONS:
         del _ACTIVE_SESSIONS[session_id]

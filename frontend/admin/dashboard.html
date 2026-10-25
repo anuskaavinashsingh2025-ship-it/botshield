@@ -212,6 +212,8 @@
       border-radius: 8px;
       padding: 1.5rem;
       margin-bottom: 3rem;
+      /* Wide tables scroll inside the panel instead of the whole page */
+      overflow-x: auto;
     }
     .table-toolbar {
       display: flex;
@@ -361,6 +363,120 @@
       padding: 0.2rem 0.5rem;
       font-size: 0.8rem;
     }
+    .demo-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+    }
+    .traffic-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .traffic-badge.sim { background: rgba(192, 132, 252, 0.15); color: #d8b4fe; border: 1px solid rgba(192, 132, 252, 0.35); }
+    .traffic-badge.real { background: rgba(113, 113, 122, 0.15); color: #d4d4d8; border: 1px solid rgba(113, 113, 122, 0.35); }
+
+    /* Hybrid detection analytics */
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin: 2rem 0 0.75rem;
+    }
+    .section-note {
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      margin: -0.5rem 0 1rem;
+    }
+    .score-fsm { color: #60a5fa; }
+    .score-ml { color: #c084fc; }
+    .score-hybrid { color: #fb923c; }
+    .chart-legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      margin-bottom: 0.75rem;
+    }
+    .chart-legend .dot {
+      display: inline-block;
+      margin-right: 0.3rem;
+    }
+    .hist-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 150px;
+      border-bottom: 1px solid #3f3f46;
+    }
+    .hist-bin {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: flex-end;
+      gap: 1px;
+    }
+    .hist-bar {
+      flex: 1;
+      min-height: 1px;
+      border-radius: 2px 2px 0 0;
+    }
+    .hist-bar.fsm { background: #60a5fa; }
+    .hist-bar.ml { background: #c084fc; }
+    .hist-bar.hybrid { background: #fb923c; }
+    .hist-axis {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: #71717a;
+      margin-top: 0.35rem;
+    }
+    .hbar-row {
+      display: grid;
+      grid-template-columns: 9rem 1fr 3rem;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      margin-bottom: 0.6rem;
+    }
+    .hbar-track {
+      background: #27272a;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .hbar-fill { height: 100%; }
+    .formula {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.75rem;
+      color: #d4d4d8;
+      background: #202024;
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      margin-top: 1rem;
+      line-height: 1.6;
+    }
+    .status-pill {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .status-pill.on { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+    .status-pill.off { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .perf-table td, .perf-table th { padding: 0.55rem 0.75rem; }
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .history-table th { text-align: left; color: #a1a1aa; font-weight: 500; padding: 0.35rem 0.5rem; border-bottom: 1px solid #27272a; }
+    .history-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #1f1f23; color: #e4e4e7; }
     .empty-state {
       text-align: center;
       padding: 3rem 1rem;
@@ -385,12 +501,22 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         Refresh
       </button>
+      {% if demo_mode %}
+      <a href="/admin/demo" class="btn-soc-sm">Live Demo</a>
+      {% else %}
       <a href="/admin/logout" class="btn-soc-sm btn-logout">Logout</a>
+      {% endif %}
     </div>
   </header>
 
   <!-- ========== MAIN DASHBOARD ========== -->
   <main class="dashboard-container">
+    {% if demo_mode %}
+    <div class="demo-banner" role="status">
+      <strong>LOCAL DEMO MODE</strong> — admin authentication is disabled for requests from this machine only.
+      Do not expose this server to a network. Production deployments require the administrator token.
+    </div>
+    {% endif %}
     <div class="dashboard-header">
       <div>
         <h1>Security Operations Center</h1>
@@ -460,6 +586,78 @@
       </div>
     </div>
 
+    <!-- HYBRID DETECTION: FSM vs ML vs HYBRID -->
+    <h2 class="section-title">Hybrid Detection — FSM vs ML vs Hybrid</h2>
+    <p class="section-note">All scores are 0–1; higher = more bot-like. Sessions with no recorded activity are excluded from averages and charts.
+      Scores describe automation-like behavior; they are not proof of fraud, scamming or intent. Sessions marked SIMULATED were generated by the BotShield traffic simulator.</p>
+
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-card__title">Avg FSM Score</div>
+        <div class="metric-card__value score-fsm" id="val-avg-fsm">-</div>
+        <div class="metric-card__sub">Rule-based behavioral FSM</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__title">Avg ML Score</div>
+        <div class="metric-card__value score-ml" id="val-avg-ml">-</div>
+        <div class="metric-card__sub" id="val-ml-scored">Isolation Forest anomaly score</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__title">Avg Hybrid Score</div>
+        <div class="metric-card__value score-hybrid" id="val-avg-hybrid">-</div>
+        <div class="metric-card__sub" id="val-evaluated">Final combined score</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__title">ML Model</div>
+        <div class="metric-card__value" style="font-size: 1.1rem;"><span class="status-pill off" id="val-ml-status">UNKNOWN</span></div>
+        <div class="metric-card__sub" id="val-ml-detail">Checking model…</div>
+      </div>
+    </div>
+
+    <div class="insights-grid">
+      <div class="insight-panel">
+        <h2>Score Distribution Comparison</h2>
+        <div class="chart-legend">
+          <span><span class="dot" style="background: #60a5fa;"></span> FSM</span>
+          <span><span class="dot" style="background: #c084fc;"></span> ML</span>
+          <span><span class="dot" style="background: #fb923c;"></span> Hybrid</span>
+        </div>
+        <div class="hist-chart" id="hist-chart"></div>
+        <div class="hist-axis"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+      </div>
+
+      <div class="insight-panel">
+        <h2>Sessions Flagged as Bot</h2>
+        <div id="detection-bars"></div>
+        <div class="formula" id="formula-box">Loading formula…</div>
+      </div>
+    </div>
+
+    <div class="table-panel" style="margin-top: 1.5rem;">
+      <div class="table-toolbar">
+        <strong style="font-size: 0.95rem;">Model Performance</strong>
+        <span id="labels-summary" style="font-size: 0.8rem; color: #a1a1aa;"></span>
+      </div>
+      <table class="data-table perf-table">
+        <thead>
+          <tr>
+            <th>Detector</th>
+            <th>Evaluated on</th>
+            <th>Samples</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>F1</th>
+            <th>False-Positive Rate</th>
+            <th>TP / FP / TN / FN</th>
+          </tr>
+        </thead>
+        <tbody id="perf-tbody">
+          <tr><td colspan="8" class="empty-state">Loading model performance…</td></tr>
+        </tbody>
+      </table>
+      <p class="section-note" id="perf-note" style="margin: 0.75rem 1rem 1rem;"></p>
+    </div>
+
     <!-- SESSIONS TABLE -->
     <div class="table-panel">
       <div class="table-toolbar">
@@ -469,6 +667,11 @@
           <button class="btn-filter" onclick="setRiskFilter('MEDIUM', this)">Medium Risk</button>
           <button class="btn-filter" onclick="setRiskFilter('LOW', this)">Low Risk</button>
           <button class="btn-filter" onclick="setRiskFilter('UNASSESSED', this)">Unassessed</button>
+        </div>
+        <div class="filter-group" aria-label="Traffic source">
+          <button class="btn-traffic btn-filter active" onclick="setTrafficFilter('', this)">All Traffic</button>
+          <button class="btn-traffic btn-filter" onclick="setTrafficFilter('REAL', this)">Real Visitors</button>
+          <button class="btn-traffic btn-filter" onclick="setTrafficFilter('SIMULATED', this)">Simulated</button>
         </div>
         <div>
           <label for="limit-select" style="font-size: 0.8rem; color: #a1a1aa; margin-right: 0.5rem;">Show:</label>
@@ -484,9 +687,14 @@
         <thead>
           <tr>
             <th>Session Identifier</th>
-            <th>Composite Score</th>
+            <th>Traffic</th>
+            <th class="score-fsm">FSM</th>
+            <th class="score-ml">ML</th>
+            <th class="score-hybrid">Hybrid</th>
             <th>Classification</th>
             <th>Mode</th>
+            <th>Behavioral State</th>
+            <th>Top Signal</th>
             <th>Events</th>
             <th>Requests</th>
             <th>Last Active (UTC)</th>
@@ -495,7 +703,7 @@
         </thead>
         <tbody id="sessions-tbody">
           <tr>
-            <td colspan="8" class="empty-state">Loading recorded session activity...</td>
+            <td colspan="13" class="empty-state">Loading recorded session activity...</td>
           </tr>
         </tbody>
       </table>
@@ -526,9 +734,17 @@
   <script>
     // State management
     let currentFilter = 'ALL';
+    let currentTraffic = '';
     let currentLimit = 25;
     let currentOffset = 0;
     let totalSessionsCount = 0;
+
+    function trafficBadge(t) {
+      if (t && t.simulated) {
+        return `<span class="traffic-badge sim" title="Generated by the BotShield traffic simulator">SIMULATED · ${escapeHtml(t.profile)}</span>`;
+      }
+      return `<span class="traffic-badge real">Visitor</span>`;
+    }
 
     // Load initial data
     document.addEventListener("DOMContentLoaded", () => {
@@ -536,13 +752,150 @@
     });
 
     async function loadDashboardData() {
-      await Promise.all([loadStats(), loadSessions()]);
+      await Promise.all([loadStats(), loadSessions(), loadAnalytics()]);
       document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+    }
+
+    // Scores arrive every few seconds from the background worker
+    setInterval(loadDashboardData, 15000);
+
+    // Same-origin admin API call. Production auth rides on the admin cookie;
+    // local demo mode needs no token. A 401/403 means the sign-in expired.
+    async function adminFetch(url) {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (res.status === 401 || res.status === 403) {
+        document.getElementById("last-updated").textContent =
+          "Not signed in — reload the page to authenticate.";
+        throw new Error("Admin authentication required");
+      }
+      return res;
+    }
+
+    function fmtScore(v) {
+      return (v === null || v === undefined) ? "—" : Number(v).toFixed(3);
+    }
+
+    function fmtRate(v) {
+      return (v === null || v === undefined) ? "n/a" : (Number(v) * 100).toFixed(1) + "%";
+    }
+
+    async function loadAnalytics() {
+      try {
+        const res = await adminFetch("/admin/api/analytics");
+        if (!res.ok) throw new Error("Analytics request failed");
+        const data = await res.json();
+        if (!data.ok) return;
+        const a = data.analytics;
+        const m = data.model;
+
+        document.getElementById("val-avg-fsm").textContent = fmtScore(a.averages.fsm);
+        document.getElementById("val-avg-ml").textContent = m.active ? fmtScore(a.averages.ml) : "N/A";
+        document.getElementById("val-avg-hybrid").textContent = fmtScore(a.averages.hybrid);
+        document.getElementById("val-ml-scored").textContent =
+          `${a.ml_scored_sessions} of ${a.evaluated_with_evidence} sessions scored by ML`;
+        document.getElementById("val-evaluated").textContent =
+          `${a.evaluated_with_evidence} sessions with activity`;
+
+        const pill = document.getElementById("val-ml-status");
+        pill.textContent = m.active ? "ACTIVE" : String(m.status || "unavailable").toUpperCase();
+        pill.className = "status-pill " + (m.active ? "on" : "off");
+        let detail;
+        if (m.active && m.metadata) {
+          detail = `Threshold ${fmtScore(m.decision_threshold)} · ${m.metadata.training_sample_count} samples (${escapeHtml(m.metadata.dataset_type)}) · trained ${escapeHtml((m.metadata.trained_at || "").substring(0, 19).replace("T", " "))}`;
+        } else {
+          detail = "ML unavailable — scoring falls back to FSM only.";
+        }
+        if (data.worker && !data.worker.running) detail += " · scoring worker not running";
+        document.getElementById("val-ml-detail").textContent = detail;
+
+        renderHistogram(a.histograms);
+        renderDetections(a.detections, a.evaluated_with_evidence, a.ml_scored_sessions);
+        document.getElementById("formula-box").innerHTML =
+          `${escapeHtml(data.formula)}<br>` +
+          `Flagged as bot: FSM &ge; ${a.thresholds.high.toFixed(2)} · ML = model anomaly decision` +
+          (m.decision_threshold !== null && m.decision_threshold !== undefined ? ` (s(x) &gt; ${fmtScore(m.decision_threshold)})` : "") +
+          ` · Hybrid = HIGH (&ge; ${a.thresholds.high.toFixed(2)})`;
+        renderPerformance(a, data.offline_evaluation, m, data.offline_evaluation_error);
+      } catch (err) {
+        console.error("Failed to load analytics:", err);
+        document.getElementById("perf-tbody").innerHTML =
+          `<tr><td colspan="8" class="empty-state" style="color: #ef4444;">Failed to load analytics.</td></tr>`;
+      }
+    }
+
+    function renderHistogram(h) {
+      const chart = document.getElementById("hist-chart");
+      chart.innerHTML = "";
+      const peak = Math.max(1, ...h.fsm, ...h.ml, ...h.hybrid);
+      for (let i = 0; i < h.bins; i++) {
+        const bin = document.createElement("div");
+        bin.className = "hist-bin";
+        const lo = (i / h.bins).toFixed(1), hi = ((i + 1) / h.bins).toFixed(1);
+        ["fsm", "ml", "hybrid"].forEach(kind => {
+          const bar = document.createElement("div");
+          bar.className = "hist-bar " + kind;
+          bar.style.height = ((h[kind][i] / peak) * 100) + "%";
+          bar.title = `${kind.toUpperCase()} ${lo}–${hi}: ${h[kind][i]} sessions`;
+          bin.appendChild(bar);
+        });
+        chart.appendChild(bin);
+      }
+    }
+
+    function renderDetections(d, total, mlTotal) {
+      const rows = [
+        ["FSM", d.fsm, total, "#60a5fa"],
+        ["ML", d.ml, mlTotal, "#c084fc"],
+        ["Hybrid", d.hybrid, total, "#fb923c"],
+        ["FSM and ML agree", d.fsm_and_ml, mlTotal, "#a1a1aa"],
+      ];
+      document.getElementById("detection-bars").innerHTML = rows.map(([name, n, of, color]) => {
+        const pct = of ? (n / of) * 100 : 0;
+        return `<div class="hbar-row"><span>${name}</span>` +
+               `<div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${color}"></div></div>` +
+               `<strong title="${n} of ${of}">${n}</strong></div>`;
+      }).join("");
+    }
+
+    function perfRow(name, source, met) {
+      if (!met || met.samples === 0) {
+        return `<tr><td>${name}</td><td>${source}</td><td colspan="6" style="color:#71717a;">No samples</td></tr>`;
+      }
+      const cm = met.confusion_matrix || met;
+      const mm = met.metrics || met;
+      return `<tr><td>${name}</td><td>${source}</td><td>${met.samples ?? met.total_samples}</td>` +
+             `<td>${fmtRate(mm.precision)}</td><td>${fmtRate(mm.recall)}</td><td>${fmtRate(mm.f1_score)}</td>` +
+             `<td>${fmtRate(mm.false_positive_rate)}</td><td class="mono">${cm.tp} / ${cm.fp} / ${cm.tn} / ${cm.fn}</td></tr>`;
+    }
+
+    function renderPerformance(a, offline, model, offlineError) {
+      const lm = a.labeled_metrics;
+      const src = "Labeled sessions";
+      let html = perfRow("FSM", src, lm.fsm) + perfRow("ML", src, lm.ml) + perfRow("Hybrid", src, lm.hybrid);
+      if (offline) {
+        const r = offline.results;
+        html += perfRow("ML", escapeHtml(offline.evaluation_name), {
+          samples: r.total_samples, confusion_matrix: r.confusion_matrix, metrics: r.metrics,
+        });
+      }
+      document.getElementById("perf-tbody").innerHTML = html;
+
+      document.getElementById("labels-summary").textContent =
+        `${a.labels.total} labeled sessions (${a.labels.bots} bot / ${a.labels.humans} human), ${a.labels.evaluated} evaluated`;
+
+      const notes = [];
+      if (a.labels.total === 0) {
+        notes.push("No ground-truth labels yet. Labels are recorded by the traffic simulator: python -m backend.simulation.runner --mode http --url http://127.0.0.1:5000");
+      }
+      if (offline) notes.push(offline.disclaimer);
+      else if (offlineError) notes.push(offlineError);
+      else if (!model.active) notes.push("Offline ML benchmark unavailable: no trained model.");
+      document.getElementById("perf-note").textContent = notes.join(" ");
     }
 
     async function loadStats() {
       try {
-        const res = await fetch("/admin/api/stats");
+        const res = await adminFetch("/admin/api/stats");
         if (!res.ok) throw new Error("Stats request failed");
         const data = await res.json();
         if (!data.ok) return;
@@ -583,7 +936,10 @@
         if (currentFilter !== 'ALL') {
           url += `&risk_level=${currentFilter}`;
         }
-        const res = await fetch(url);
+        if (currentTraffic) {
+          url += `&traffic=${currentTraffic}`;
+        }
+        const res = await adminFetch(url);
         if (!res.ok) throw new Error("Session fetch failed");
         const data = await res.json();
         if (!data.ok) return;
@@ -592,7 +948,7 @@
         renderSessionsTable(data.sessions);
         updatePaginationInfo();
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: #ef4444;">Failed to load sessions. Please try refreshing.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" class="empty-state" style="color: #ef4444;">Failed to load sessions. Please try refreshing.</td></tr>`;
       }
     }
 
@@ -601,7 +957,7 @@
       tbody.innerHTML = "";
 
       if (!sessions || sessions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No matching sessions recorded in database.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" class="empty-state">No matching sessions recorded in database.</td></tr>`;
         return;
       }
 
@@ -615,9 +971,24 @@
         tdId.title = s.session_id;
         tr.appendChild(tdId);
 
-        // Score
+        // Traffic source: simulator-labeled vs real visitor
+        const tdTraffic = document.createElement("td");
+        tdTraffic.innerHTML = trafficBadge(s.traffic_source);
+        tr.appendChild(tdTraffic);
+
+        // FSM, ML and hybrid scores (0-1)
+        const tdFsm = document.createElement("td");
+        tdFsm.textContent = fmtScore(s.fsm_score);
+        tr.appendChild(tdFsm);
+
+        const tdMl = document.createElement("td");
+        tdMl.textContent = fmtScore(s.ml_score);
+        if (s.ml_score === null && s.ml_status) tdMl.title = "ML " + s.ml_status;
+        tr.appendChild(tdMl);
+
         const tdScore = document.createElement("td");
-        tdScore.textContent = s.composite_score !== null ? s.composite_score.toFixed(1) : "—";
+        tdScore.textContent = fmtScore(s.risk_score);
+        tdScore.title = s.composite_score !== null ? s.composite_score.toFixed(1) + " / 100" : "";
         tr.appendChild(tdScore);
 
         // Classification Badge
@@ -632,6 +1003,24 @@
         const tdMode = document.createElement("td");
         tdMode.textContent = s.scoring_mode || "—";
         tr.appendChild(tdMode);
+
+        // Behavioral FSM state
+        const tdState = document.createElement("td");
+        tdState.className = "mono";
+        tdState.textContent = s.fsm_state || "—";
+        tr.appendChild(tdState);
+
+        // Most important explanation (full list in Inspect)
+        const tdReason = document.createElement("td");
+        const reasons = s.reasons || [];
+        const top = reasons[0] || "—";
+        tdReason.textContent = top.length > 48 ? top.substring(0, 47) + "…" : top;
+        tdReason.title = reasons.join("\n");
+        tdReason.style.fontSize = "0.78rem";
+        tdReason.style.color = "#a1a1aa";
+        tdReason.style.maxWidth = "16rem";
+        if (reasons.length > 1) tdReason.textContent += ` (+${reasons.length - 1})`;
+        tr.appendChild(tdReason);
 
         // Events count
         const tdEvents = document.createElement("td");
@@ -673,7 +1062,15 @@
     function setRiskFilter(filter, btn) {
       currentFilter = filter;
       currentOffset = 0;
-      document.querySelectorAll(".btn-filter").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".btn-filter:not(.btn-traffic)").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadSessions();
+    }
+
+    function setTrafficFilter(traffic, btn) {
+      currentTraffic = traffic;
+      currentOffset = 0;
+      document.querySelectorAll(".btn-traffic").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       loadSessions();
     }
@@ -705,7 +1102,7 @@
       content.innerHTML = `<div class="empty-state">Loading diagnostics for ${sessionId}…</div>`;
 
       try {
-        const res = await fetch(`/admin/api/sessions/${encodeURIComponent(sessionId)}`);
+        const res = await adminFetch(`/admin/api/sessions/${encodeURIComponent(sessionId)}`);
         if (!res.ok) throw new Error("Failed to load session details");
         const data = await res.json();
         if (!data.ok) return;
@@ -733,7 +1130,7 @@
         content.innerHTML = `
           <div style="margin-bottom: 1.5rem;">
             <div style="font-size: 0.8rem; color: #a1a1aa; text-transform: uppercase;">Session ID</div>
-            <div class="mono" style="font-size: 1rem; color: #ffffff; word-break: break-all;">${escapeHtml(s.session_id)}</div>
+            <div class="mono" style="font-size: 1rem; color: #ffffff; word-break: break-all;">${escapeHtml(s.session_id)} ${trafficBadge(s.traffic_source)}</div>
             <div style="font-size: 0.8rem; color: #71717a; margin-top: 0.25rem;">
               First seen: ${escapeHtml(s.created_at)} &bull; Last active: ${escapeHtml(s.last_seen)}
             </div>
@@ -748,19 +1145,33 @@
                 <span style="font-size: 0.8rem; color: #71717a;">/ 100.0</span>
               </div>
               <div style="font-size: 0.8rem; color: #a1a1aa; margin-top: 0.5rem;">
-                FSM Score: ${r.fsm_score !== null ? r.fsm_score.toFixed(4) : "—"} &bull; ML Score: ${r.ml_score !== null ? r.ml_score.toFixed(4) : "—"}
+                <span class="score-fsm">FSM ${fmtScore(r.fsm_score)}</span> &bull;
+                <span class="score-ml">ML ${r.ml_score !== null ? fmtScore(r.ml_score) : "N/A (" + escapeHtml(r.ml_status || "not run") + ")"}</span> &bull;
+                <span class="score-hybrid">Hybrid ${fmtScore(r.risk_score)}</span>
+              </div>
+              <div style="font-size: 0.75rem; color: #71717a; margin-top: 0.35rem;">
+                ML anomaly decision: ${r.ml_is_anomaly === null || r.ml_is_anomaly === undefined ? "—" : (r.ml_is_anomaly ? "anomalous" : "normal")}
+                &bull; Evaluated: ${escapeHtml(r.updated_at || "never")}
               </div>
             </div>
 
             <div style="background: #202024; padding: 1rem; border-radius: 6px;">
-              <div style="font-size: 0.8rem; color: #a1a1aa;">Evaluation Mode</div>
+              <div style="font-size: 0.8rem; color: #a1a1aa;">Evaluation Mode &amp; Behavioral State</div>
               <div style="font-size: 1rem; font-weight: 600; color: #ffffff; margin-top: 0.25rem;">
                 ${escapeHtml(r.scoring_mode || "UNASSESSED")}
+              </div>
+              <div class="mono" style="font-size: 0.85rem; color: #d4d4d8; margin-top: 0.25rem;">
+                FSM state: ${escapeHtml(r.fsm_state || "—")}
               </div>
               <div style="font-size: 0.8rem; color: #71717a; margin-top: 0.5rem;">
                 Total Events: ${s.telemetry_summary.total_events} &bull; Requests: ${s.request_summary.total_requests}
               </div>
             </div>
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">Score History (latest ${s.risk_history.length})</div>
+            ${renderHistory(s.risk_history)}
           </div>
 
           <div style="margin-bottom: 1.5rem;">
@@ -773,14 +1184,53 @@
             <div class="tag-container">${eventsTagHtml}</div>
           </div>
 
-          <div>
+          <div style="margin-bottom: 1.5rem;">
             <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">HTTP Request Method Breakdown</div>
             <div class="tag-container">${requestsHtml}</div>
+          </div>
+
+          <div>
+            <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 0.25rem;">Recent Activity Timeline</div>
+            ${renderTimeline(s.telemetry_summary.recent_events, s.request_summary.recent_requests)}
           </div>
         `;
       } catch (err) {
         content.innerHTML = `<div class="empty-state" style="color: #ef4444;">Failed to load session detail.</div>`;
       }
+    }
+
+    function renderHistory(history) {
+      if (!history || history.length === 0) {
+        return "<p style='color: #71717a; font-size: 0.85rem;'>No evaluations recorded yet.</p>";
+      }
+      const rows = history.slice().reverse().map(h => `
+        <tr>
+          <td class="mono">${escapeHtml(String(h.evaluated_at).replace("T", " ").substring(0, 19))}</td>
+          <td class="score-fsm">${fmtScore(h.fsm_score)}</td>
+          <td class="score-ml">${h.ml_score === null ? "N/A" : fmtScore(h.ml_score)}</td>
+          <td class="score-hybrid">${fmtScore(h.hybrid_score)}</td>
+          <td><span class="risk-badge ${escapeHtml(h.risk_level)}">${escapeHtml(h.risk_level)}</span></td>
+          <td>${escapeHtml(h.scoring_mode)}</td>
+          <td class="mono">${escapeHtml(h.fsm_state || "—")}</td>
+        </tr>`).join("");
+      return `<table class="history-table"><thead><tr><th>Evaluated (UTC)</th><th>FSM</th><th>ML</th><th>Hybrid</th><th>Level</th><th>Mode</th><th>State</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderTimeline(events, requests) {
+      const items = [
+        ...(events || []).map(e => ({ t: e.timestamp, kind: "event", text: `${e.event_type} ${e.page || ""}` })),
+        ...(requests || []).map(r => ({ t: r.timestamp, kind: "request", text: `${r.method} ${r.path} → ${r.status_code}` })),
+      ].sort((a, b) => String(b.t).localeCompare(String(a.t))).slice(0, 20);
+      if (items.length === 0) {
+        return "<p style='color: #71717a; font-size: 0.85rem;'>No activity recorded.</p>";
+      }
+      const rows = items.map(i => `
+        <tr>
+          <td class="mono">${escapeHtml(String(i.t).replace("T", " ").substring(0, 19))}</td>
+          <td>${i.kind === "event" ? "Browser" : "Server"}</td>
+          <td class="mono">${escapeHtml(i.text)}</td>
+        </tr>`).join("");
+      return `<table class="history-table"><thead><tr><th>Time (UTC)</th><th>Source</th><th>Activity</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
 
     function closeModal() {

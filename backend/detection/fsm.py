@@ -145,6 +145,10 @@ class FSMResult:
 
 _PRODUCT_PATH_RE = re.compile(r"^/product/\d+$")
 
+# Max gap between a server request and the browser PAGE_VIEW for the same page
+# load (HTML response + tracker.js start-up). Used to avoid counting one load twice.
+_PAGE_VIEW_MIRROR_SECONDS = 5.0
+
 
 def parse_iso_to_epoch(ts: str | None) -> float | None:
     """
@@ -201,6 +205,18 @@ def map_telemetry_to_symbol(event_type: str, page: str, metadata: dict) -> FSMSy
         return FSMSymbol.USER_INTERACTION
 
     return FSMSymbol.UNKNOWN
+
+
+def anomaly_penalties(cfg: FSMConfig) -> dict[str, float]:
+    """Score contribution of each anomaly code (unknown codes contribute 0.10)."""
+    return {
+        "ANOMALY_RAPID_TRAVERSAL": cfg.penalty_rapid_traversal,
+        "ANOMALY_HIGH_REQUEST_LOW_TELEMETRY": cfg.penalty_high_req_low_telemetry,
+        "ANOMALY_PATH_CYCLING": cfg.penalty_path_cycling,
+        "ANOMALY_RAPID_REQUEST_BURST": cfg.penalty_burst_rate,
+        "ANOMALY_INVALID_ORDERING": cfg.penalty_invalid_ordering,
+        "SIGNAL_LOW_INTERACTION": cfg.penalty_low_interaction_context,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +367,7 @@ class BehavioralFSM:
         # Process events chronologically
         for i, event in enumerate(events):
             step_anomalies: list[AnomalyRecord] = []
+            prev_nav_event = last_nav_event
 
             # 1. Check Rapid Traversal between distinct navigation events
             if self._is_navigation_symbol(event.symbol):
@@ -378,7 +395,16 @@ class BehavioralFSM:
                 last_nav_event = event
 
             # 2. Check Path Cycling / Repetitive loops
-            if self._is_navigation_symbol(event.symbol):
+            # A page load is observed twice: the server request and the browser's
+            # PAGE_VIEW for the same path moments later. Count it once.
+            is_page_view_mirror = (
+                event.source == "TELEMETRY"
+                and prev_nav_event is not None
+                and prev_nav_event.source == "HTTP_REQUEST"
+                and prev_nav_event.path == event.path
+                and 0.0 <= event.epoch_timestamp - prev_nav_event.epoch_timestamp <= _PAGE_VIEW_MIRROR_SECONDS
+            )
+            if self._is_navigation_symbol(event.symbol) and not is_page_view_mirror:
                 if event.path == consecutive_same_path_str:
                     consecutive_same_path_count += 1
                 else:
@@ -487,18 +513,38 @@ class BehavioralFSM:
                 state = FSMState.SUSPICIOUS
 
         # B. Burst Request Rate (superhuman request frequency)
-        if duration > 0.0 and http_requests_count >= 5:
-            rps = http_requests_count / duration
+        # Measured over the densest stretch of page requests that fits within
+        # burst_window_seconds, so a burst is not diluted by earlier normal browsing.
+        request_times = sorted(
+            e.epoch_timestamp for e in events
+            if e.source == "HTTP_REQUEST" and e.symbol != FSMSymbol.HTTP_API
+        )
+        rps = 0.0
+        burst_count = 0
+        burst_span = 0.0
+        start = 0
+        for end in range(len(request_times)):
+            while request_times[end] - request_times[start] > cfg.burst_window_seconds:
+                start += 1
+            count = end - start + 1
+            span = request_times[end] - request_times[start]
+            if count >= 5 and span > 0.0 and count / span > rps:
+                rps, burst_count, burst_span = count / span, count, span
+
+        if burst_count:
             if rps >= cfg.burst_rps_threshold:
                 emitted_anomalies.append(
                     AnomalyRecord(
                         code="ANOMALY_RAPID_REQUEST_BURST",
                         explanation=(
                             f"Burst request rate of {rps:.1f} req/s exceeds human limit "
-                            f"(threshold: {cfg.burst_rps_threshold:.1f} req/s)."
+                            f"({burst_count} requests in {burst_span:.2f}s, "
+                            f"threshold: {cfg.burst_rps_threshold:.1f} req/s)."
                         ),
                         evidence={
                             "burst_rate_rps": round(rps, 2),
+                            "burst_request_count": burst_count,
+                            "burst_span_seconds": round(burst_span, 3),
                             "duration_seconds": round(duration, 2),
                             "threshold_rps": cfg.burst_rps_threshold,
                         },
@@ -533,14 +579,7 @@ class BehavioralFSM:
                 unique_anomalies[a.code] = a
 
         # Compute deterministic penalty score
-        penalty_map = {
-            "ANOMALY_RAPID_TRAVERSAL": cfg.penalty_rapid_traversal,
-            "ANOMALY_HIGH_REQUEST_LOW_TELEMETRY": cfg.penalty_high_req_low_telemetry,
-            "ANOMALY_PATH_CYCLING": cfg.penalty_path_cycling,
-            "ANOMALY_RAPID_REQUEST_BURST": cfg.penalty_burst_rate,
-            "ANOMALY_INVALID_ORDERING": cfg.penalty_invalid_ordering,
-            "SIGNAL_LOW_INTERACTION": cfg.penalty_low_interaction_context,
-        }
+        penalty_map = anomaly_penalties(cfg)
 
         raw_score = 0.0
         # If ONLY low interaction context exists, score remains 0.0 (safe for mobile/a11y)

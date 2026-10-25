@@ -24,7 +24,7 @@ import joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 from backend.ml.features import (
     FEATURE_NAMES,
@@ -89,12 +89,19 @@ def train_unsupervised_model(
     random_state: int = 42,
     min_samples: int = 10,
     dataset_type: str = "synthetic_baseline",
+    log_transform: bool = False,
+    n_estimators: int = 100,
 ) -> dict[str, Any]:
     """
     Train an unsupervised Isolation Forest anomaly detection pipeline on behavioral feature vectors.
 
     training_data: list of 21-element feature vectors or (N, 21) numpy array
     model_path: optional destination path for saving the model artifact
+    log_transform: apply log1p before scaling. Counts and durations are heavy-tailed
+                   (a session can last hours); without it they dominate the scaled
+                   space and short bot bursts barely stand out. Stored in the
+                   pipeline, so inference is unchanged.
+    n_estimators: number of trees in the forest
     contamination: expected proportion of outliers (0.001 to 0.5)
     random_state: seed for reproducibility
     min_samples: minimum training samples required (minimum 5)
@@ -129,19 +136,21 @@ def train_unsupervised_model(
     if not (0.001 <= contamination <= 0.5):
         raise ValueError(f"contamination must be between 0.001 and 0.5 (got {contamination})")
 
-    # Construct pipeline with StandardScaler and IsolationForest
-    pipeline = Pipeline([
+    # Construct pipeline with (optional log1p,) StandardScaler and IsolationForest
+    steps = [("log1p", FunctionTransformer(np.log1p))] if log_transform else []
+    steps += [
         ("scaler", StandardScaler()),
         (
             "forest",
             IsolationForest(
-                n_estimators=100,
+                n_estimators=n_estimators,
                 contamination=contamination,
                 random_state=random_state,
                 n_jobs=1,
             ),
         ),
-    ])
+    ]
+    pipeline = Pipeline(steps)
 
     pipeline.fit(X)
 
@@ -155,6 +164,8 @@ def train_unsupervised_model(
         "random_state": int(random_state),
         "dataset_type": str(dataset_type),
         "scaler": "StandardScaler",
+        "feature_transform": "log1p" if log_transform else None,
+        "n_estimators": int(n_estimators),
     }
 
     payload = {
@@ -280,21 +291,44 @@ class IsolationForestModel:
             )
 
         pipeline: Pipeline = self.bundle["pipeline"]
-        metadata: dict[str, Any] = self.bundle.get("metadata", {})
+        metadata: dict[str, Any] = dict(self.bundle.get("metadata", {}))
 
-        X = np.asarray([features.feature_vector], dtype=np.float64)
+        def _error_result(message: str) -> MLInferenceResult:
+            # Never substitute a placeholder score: report ERROR with no score.
+            warnings.append(message)
+            return MLInferenceResult(
+                status=MLModelStatus.ERROR,
+                schema_version=features.schema_version,
+                anomaly_score=None,
+                is_anomaly=None,
+                feature_vector=features.feature_vector,
+                feature_summary=features.feature_dict,
+                warnings=warnings,
+                model_metadata=metadata,
+            )
 
         try:
-            # score_samples outputs negative anomaly scores in [-1.0, 0.0]
-            # Higher opposite score = more anomalous
+            X = np.asarray([features.feature_vector], dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            return _error_result(f"ERROR_INVALID_FEATURES: {exc}")
+        if X.shape != (1, len(FEATURE_NAMES)) or not np.isfinite(X).all():
+            return _error_result("ERROR_INVALID_FEATURES: feature vector has wrong length or non-finite values")
+
+        try:
+            # score_samples returns -s(x), where s(x) in (0, 1] is the Isolation
+            # Forest anomaly score (Liu et al.); higher s(x) = more anomalous.
             raw_scores = pipeline.score_samples(X)
             raw_score = -float(raw_scores[0])
+            if math.isnan(raw_score) or math.isinf(raw_score):
+                return _error_result("WARNING_NON_FINITE_MODEL_SCORE")
 
             # Clamp normalized anomaly score strictly to [0.0, 1.0]
             normalized_score = max(0.0, min(1.0, raw_score))
-            if math.isnan(normalized_score) or math.isinf(normalized_score):
-                normalized_score = 0.5
-                warnings.append("WARNING_NON_FINITE_MODEL_SCORE")
+
+            # The model's own decision boundary on the same s(x) scale
+            forest = pipeline.named_steps.get("forest") if hasattr(pipeline, "named_steps") else None
+            if forest is not None and hasattr(forest, "offset_"):
+                metadata["decision_threshold"] = round(-float(forest.offset_), 4)
 
             # Determine anomaly classification: forest predict returns -1 for outlier, 1 for inlier
             raw_preds = pipeline.predict(X)

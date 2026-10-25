@@ -97,3 +97,11 @@ def test_score_changes_after_rapid_requests(client):
     assert data["state"] in ("RAPID_REQUESTS", "REPEATED_REQUESTS", "SUSPICIOUS_BEHAVIOR")
     assert data["score"] > 0.3
     assert data["risk_level"] in ("MEDIUM", "HIGH")
+
+def test_product_pages_grouped_for_automata():
+    # Moved from the retired Step 4 logger: product pages share one FSM endpoint.
+    from app import _automata_endpoint
+    assert _automata_endpoint("/product/1") == "/product/<id>"
+    assert _automata_endpoint("/product/42") == "/product/<id>"
+    assert _automata_endpoint("/product/abc") == "/product/abc"
+    assert _automata_endpoint("/products") == "/products"

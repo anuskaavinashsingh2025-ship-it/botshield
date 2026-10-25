@@ -176,6 +176,11 @@ def main():
 
     # Training parameters
     parser.add_argument("--synthetic", action="store_true", help="Generate synthetic human baseline data for training.")
+    parser.add_argument(
+        "--realistic", action="store_true",
+        help="Train/evaluate on pipeline-faithful simulated sessions (backend.ml.realistic); "
+             "--samples is then the number of human sessions.",
+    )
     parser.add_argument("--samples", type=int, default=100, help="Number of synthetic samples to generate (default 100).")
     parser.add_argument("--db", type=str, default=None, help="Database path to extract training sessions from.")
     parser.add_argument("--out", type=str, default=None, help="Destination model path.")
@@ -188,7 +193,7 @@ def main():
     args = parser.parse_args()
 
     # If no flags passed, print help and exit
-    if not (args.contract or args.status or args.train or args.evaluate or args.synthetic or args.db):
+    if not (args.contract or args.status or args.train or args.evaluate or args.synthetic or args.db or args.realistic):
         parser.print_help()
         sys.exit(0)
 
@@ -198,6 +203,26 @@ def main():
 
     if args.status:
         print_model_status(args.model or args.out)
+        sys.exit(0)
+
+    if args.evaluate and args.realistic:
+        from backend.ml.realistic import evaluate_model_realistic
+
+        target_path = get_model_path(args.model or args.out)
+        report = evaluate_model_realistic(str(target_path))
+        res = report["results"]
+        cm, met = res["confusion_matrix"], res["metrics"]
+        print("\n" + "=" * 80)
+        print(report["evaluation_name"])
+        print("=" * 80)
+        print(f"Model Artifact:      {target_path}")
+        print(f"Operating Threshold: {report['operating_threshold']} (model's own decision boundary)")
+        print(f"TP {cm['tp']}  FP {cm['fp']}  TN {cm['tn']}  FN {cm['fn']}")
+        print(f"Precision {met['precision']:.4f}  Recall {met['recall']:.4f}  "
+              f"F1 {met['f1_score']:.4f}  FPR {met['false_positive_rate']:.4f}")
+        for kind, b in res["per_scenario"].items():
+            print(f"  {kind:<11} flagged {b['flagged']:>3} / {b['sessions']}")
+        print(f"\n{report['disclaimer']}\n")
         sys.exit(0)
 
     if args.evaluate:
@@ -245,10 +270,16 @@ def main():
             logger.error("Evaluation failed: %s", exc)
             sys.exit(1)
 
-    if args.train or args.synthetic or args.db:
+    if args.train or args.synthetic or args.db or args.realistic:
         training_vectors = []
         dataset_type = "synthetic_baseline"
-        if args.synthetic or (not args.db and args.train):
+        if args.realistic:
+            from backend.ml.realistic import build_training_vectors
+
+            logger.info("Generating pipeline-faithful human sessions (%d sessions, seed=%d)...", args.samples, args.seed)
+            training_vectors = build_training_vectors(n_sessions=args.samples, seed=args.seed)
+            dataset_type = f"realistic_pipeline_{args.samples}"
+        elif args.synthetic or (not args.db and args.train):
             logger.info("Generating synthetic training baseline (%d samples, seed=%d)...", args.samples, args.seed)
             training_vectors = generate_synthetic_baseline(sample_count=args.samples, random_state=args.seed)
             dataset_type = f"synthetic_baseline_{args.samples}"
@@ -280,6 +311,9 @@ def main():
                 random_state=args.seed,
                 min_samples=args.min_samples,
                 dataset_type=dataset_type,
+                # Pipeline sessions have heavy-tailed counts/durations
+                log_transform=bool(args.realistic),
+                n_estimators=200 if args.realistic else 100,
             )
             logger.info("Training complete. Artifact saved atomically to: %s", target_path)
             logger.info("Metadata: %s", metadata)

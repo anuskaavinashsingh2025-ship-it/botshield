@@ -1637,3 +1637,58 @@ ul { list-style: none; }
   left: 0;
   color: var(--text-dim);
 }
+
+/* Hybrid scores: FSM / ML / Hybrid side by side */
+.monitor-panel__body {
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.monitor-scores {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.monitor-score {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.monitor-score--hybrid {
+  border-color: var(--accent);
+}
+
+.monitor-score .monitor-val {
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-panel__body > .monitor-item:not(:last-child) {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.monitor-panel__body > .monitor-item:not(:last-child) .monitor-val {
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.monitor-val--na {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 600px) {
+  .monitor-panel {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    max-width: 320px;
+  }
+}

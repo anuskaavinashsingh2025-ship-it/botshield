@@ -46,6 +46,50 @@ def _safe_json_loads(val: Any) -> list[str]:
     return []
 
 
+def _row_value(row: sqlite3.Row, key: str) -> Any:
+    """Read an optional column, tolerating rows selected without it."""
+    return row[key] if key in row.keys() else None
+
+
+def _traffic_source(label_source: str | None) -> dict[str, Any]:
+    """Distinguish simulator-generated sessions from real visitor traffic."""
+    if label_source and str(label_source).startswith("simulation:"):
+        return {"simulated": True, "profile": str(label_source).split(":", 1)[1]}
+    return {"simulated": False, "profile": None}
+
+
+def _interpret_risk_row(row: sqlite3.Row) -> dict[str, Any]:
+    """
+    Derive scoring mode and the usable ML score for a session_risks row.
+
+    Rows written by the hybrid pipeline store scoring_mode/ml_status explicitly.
+    Older rows fall back to the original heuristic (ml_score == 0.0 => FSM-only).
+    session_risks.ml_score is NOT NULL, so it holds 0.0 when ML did not run;
+    that value is reported as None rather than as a real ML score.
+    """
+    _, _, ScoringMode, _ = _get_scoring_components()
+    stored_mode = _row_value(row, "scoring_mode")
+    ml_status = _row_value(row, "ml_status")
+    raw_ml = float(row["ml_score"])
+
+    if stored_mode:
+        scoring_mode = stored_mode
+        ml_score = raw_ml if ml_status == "available" and stored_mode == ScoringMode.HYBRID.value else None
+    else:
+        legacy_fsm_only = "FSM-only" in str(row["reasons"]) or raw_ml == 0.0
+        scoring_mode = ScoringMode.FSM_ONLY.value if legacy_fsm_only else ScoringMode.HYBRID.value
+        ml_score = None if legacy_fsm_only else raw_ml
+
+    anomaly = _row_value(row, "ml_is_anomaly")
+    return {
+        "scoring_mode": scoring_mode,
+        "ml_score": ml_score,
+        "ml_status": ml_status,
+        "fsm_state": _row_value(row, "fsm_state"),
+        "ml_is_anomaly": None if anomaly is None else bool(anomaly),
+    }
+
+
 def get_admin_overview_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     """
     Compute aggregate platform statistics from SQLite tables.
@@ -88,9 +132,12 @@ def get_admin_overview_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     cur.execute(
         """
         SELECT
-            COUNT(CASE WHEN ml_score > 0.0 THEN 1 END) AS hybrid_count,
-            COUNT(CASE WHEN reasons LIKE '%FSM-only%' OR (ml_score = 0.0 AND risk_score > 0.0) THEN 1 END) AS fsm_only_count,
-            COUNT(CASE WHEN reasons LIKE '%INSUFFICIENT_SESSION_EVIDENCE%' OR (risk_score = 0.0 AND reasons = '[]') THEN 1 END) AS insufficient_count
+            COUNT(CASE WHEN scoring_mode = 'HYBRID'
+                       OR (scoring_mode IS NULL AND ml_score > 0.0) THEN 1 END) AS hybrid_count,
+            COUNT(CASE WHEN scoring_mode = 'FSM_ONLY'
+                       OR (scoring_mode IS NULL AND (reasons LIKE '%FSM-only%' OR (ml_score = 0.0 AND risk_score > 0.0))) THEN 1 END) AS fsm_only_count,
+            COUNT(CASE WHEN scoring_mode = 'INSUFFICIENT_EVIDENCE'
+                       OR (scoring_mode IS NULL AND (reasons LIKE '%INSUFFICIENT_SESSION_EVIDENCE%' OR (risk_score = 0.0 AND reasons = '[]'))) THEN 1 END) AS insufficient_count
         FROM session_risks
         """
     )
@@ -144,7 +191,11 @@ def get_recent_high_risk_sessions(
             sr.fsm_score,
             sr.ml_score,
             sr.reasons,
-            sr.updated_at
+            sr.updated_at,
+            sr.scoring_mode,
+            sr.ml_status,
+            sr.fsm_state,
+            sr.ml_is_anomaly
         FROM session_risks sr
         JOIN sessions s ON s.session_id = sr.session_id
         WHERE sr.risk_score >= ?
@@ -164,10 +215,7 @@ def get_recent_high_risk_sessions(
         comp_score = round(norm_score * 100.0, 1)
         level = classify_risk(comp_score, cfg)
         reasons_list = _safe_json_loads(r["reasons"])
-
-        mode = ScoringMode.HYBRID
-        if "FSM-only" in str(r["reasons"]) or float(r["ml_score"]) == 0.0:
-            mode = ScoringMode.FSM_ONLY
+        interp = _interpret_risk_row(r)
 
         results.append({
             "session_id": r["session_id"],
@@ -176,9 +224,11 @@ def get_recent_high_risk_sessions(
             "risk_score": norm_score,
             "composite_score": comp_score,
             "risk_level": level.value,
-            "scoring_mode": mode.value,
+            "scoring_mode": interp["scoring_mode"],
             "fsm_score": float(r["fsm_score"]),
-            "ml_score": float(r["ml_score"]),
+            "ml_score": interp["ml_score"],
+            "ml_status": interp["ml_status"],
+            "fsm_state": interp["fsm_state"],
             "reasons": reasons_list,
             "updated_at": r["updated_at"],
         })
@@ -193,9 +243,13 @@ def get_admin_sessions_paginated(
     risk_filter: str | None = None,
     sort_by: str = "last_seen",
     sort_order: str = "desc",
+    traffic_filter: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Fetch paginated session records with optional risk filtering and safe column sorting.
+
+    traffic_filter: 'SIMULATED' (sessions labeled by the traffic simulator) or
+    'REAL' (everything else, i.e. visitor traffic); anything else = no filter.
 
     Returns:
         (session_records_list, total_matching_count)
@@ -228,6 +282,13 @@ def get_admin_sessions_paginated(
         elif rf == "ALL":
             pass  # No filtering
 
+    if traffic_filter:
+        tf = traffic_filter.strip().upper()
+        if tf == "SIMULATED":
+            where_conditions.append("sl.source LIKE 'simulation:%'")
+        elif tf == "REAL":
+            where_conditions.append("(sl.source IS NULL OR sl.source NOT LIKE 'simulation:%')")
+
     where_clause = ""
     if where_conditions:
         where_clause = "WHERE " + " AND ".join(where_conditions)
@@ -239,6 +300,7 @@ def get_admin_sessions_paginated(
         SELECT COUNT(*)
         FROM sessions s
         LEFT JOIN session_risks sr ON s.session_id = sr.session_id
+        LEFT JOIN session_labels sl ON s.session_id = sl.session_id
         {where_clause}
     """
     cur.execute(count_sql, params)
@@ -255,10 +317,16 @@ def get_admin_sessions_paginated(
             sr.ml_score,
             sr.reasons,
             sr.updated_at AS risk_updated_at,
+            sr.scoring_mode,
+            sr.ml_status,
+            sr.fsm_state,
+            sr.ml_is_anomaly,
+            sl.source AS label_source,
             (SELECT COUNT(*) FROM events e WHERE e.session_id = s.session_id) AS event_count,
             (SELECT COUNT(*) FROM requests r WHERE r.session_id = s.session_id) AS request_count
         FROM sessions s
         LEFT JOIN session_risks sr ON s.session_id = sr.session_id
+        LEFT JOIN session_labels sl ON s.session_id = sl.session_id
         {where_clause}
         ORDER BY {sort_column} {direction}, s.session_id DESC
         LIMIT ? OFFSET ?
@@ -279,12 +347,9 @@ def get_admin_sessions_paginated(
             risk_level = classify_risk(comp_score, cfg).value
             reasons_list = _safe_json_loads(r["reasons"])
             fsm_score = float(r["fsm_score"])
-            ml_score = float(r["ml_score"])
-            scoring_mode = (
-                ScoringMode.FSM_ONLY.value
-                if ("FSM-only" in str(r["reasons"]) or ml_score == 0.0)
-                else ScoringMode.HYBRID.value
-            )
+            interp = _interpret_risk_row(r)
+            ml_score = interp["ml_score"]
+            scoring_mode = interp["scoring_mode"]
         else:
             norm_score = None
             comp_score = None
@@ -293,6 +358,7 @@ def get_admin_sessions_paginated(
             fsm_score = None
             ml_score = None
             scoring_mode = None
+            interp = {"ml_status": None, "fsm_state": None, "ml_is_anomaly": None}
 
         records.append({
             "session_id": r["session_id"],
@@ -304,6 +370,10 @@ def get_admin_sessions_paginated(
             "scoring_mode": scoring_mode,
             "fsm_score": fsm_score,
             "ml_score": ml_score,
+            "ml_status": interp["ml_status"],
+            "fsm_state": interp["fsm_state"],
+            "ml_is_anomaly": interp["ml_is_anomaly"],
+            "traffic_source": _traffic_source(r["label_source"]),
             "reasons": reasons_list,
             "risk_updated_at": r["risk_updated_at"],
             "event_count": int(r["event_count"] or 0),
@@ -347,13 +417,10 @@ def get_admin_session_detail(
         risk_level = classify_risk(comp_score, cfg).value
         reasons_list = _safe_json_loads(risk_row["reasons"])
         fsm_score = float(risk_row["fsm_score"])
-        ml_score = float(risk_row["ml_score"])
         risk_updated_at = risk_row["updated_at"]
-        scoring_mode = (
-            ScoringMode.FSM_ONLY.value
-            if ("FSM-only" in str(risk_row["reasons"]) or ml_score == 0.0)
-            else ScoringMode.HYBRID.value
-        )
+        interp = _interpret_risk_row(risk_row)
+        ml_score = interp["ml_score"]
+        scoring_mode = interp["scoring_mode"]
     else:
         norm_score = None
         comp_score = None
@@ -363,6 +430,7 @@ def get_admin_session_detail(
         ml_score = None
         risk_updated_at = None
         scoring_mode = None
+        interp = {"ml_status": None, "fsm_state": None, "ml_is_anomaly": None}
 
     # 3. Telemetry event summary
     cur.execute(
@@ -433,10 +501,15 @@ def get_admin_session_detail(
         for r in cur.fetchall()
     ]
 
+    label_row = cur.execute(
+        "SELECT source FROM session_labels WHERE session_id = ?", (clean_id,)
+    ).fetchone()
+
     return {
         "session_id": session_row["session_id"],
         "created_at": session_row["created_at"],
         "last_seen": session_row["last_seen"],
+        "traffic_source": _traffic_source(label_row["source"] if label_row else None),
         "risk_assessment": {
             "risk_score": norm_score,
             "composite_score": comp_score,
@@ -444,9 +517,33 @@ def get_admin_session_detail(
             "scoring_mode": scoring_mode,
             "fsm_score": fsm_score,
             "ml_score": ml_score,
+            "ml_status": interp["ml_status"],
+            "fsm_state": interp["fsm_state"],
+            "ml_is_anomaly": interp["ml_is_anomaly"],
             "reasons": reasons_list,
             "updated_at": risk_updated_at,
         },
+        "risk_history": [
+            {
+                "evaluated_at": h["evaluated_at"],
+                "fsm_score": h["fsm_score"],
+                "ml_score": h["ml_score"],
+                "hybrid_score": h["hybrid_score"],
+                "risk_level": h["risk_level"],
+                "scoring_mode": h["scoring_mode"],
+                "ml_status": h["ml_status"],
+                "fsm_state": h["fsm_state"],
+            }
+            for h in cur.execute(
+                """
+                SELECT * FROM (
+                    SELECT * FROM session_risk_history WHERE session_id = ?
+                    ORDER BY id DESC LIMIT 50
+                ) ORDER BY id ASC
+                """,
+                (clean_id,),
+            ).fetchall()
+        ],
         "telemetry_summary": {
             "total_events": total_events,
             "event_counts_by_type": event_counts,
@@ -456,5 +553,126 @@ def get_admin_session_detail(
             "total_requests": total_requests,
             "breakdown": request_breakdown,
             "recent_requests": recent_requests,
+        },
+    }
+
+
+def _binary_metrics(pairs: list[tuple[int, bool]]) -> dict[str, Any]:
+    """Confusion matrix and rates for (true_label, predicted_bot) pairs."""
+    tp = sum(1 for y, p in pairs if y == 1 and p)
+    fp = sum(1 for y, p in pairs if y == 0 and p)
+    tn = sum(1 for y, p in pairs if y == 0 and not p)
+    fn = sum(1 for y, p in pairs if y == 1 and not p)
+
+    def ratio(num: int, den: int) -> float | None:
+        return round(num / den, 4) if den else None
+
+    precision = ratio(tp, tp + fp)
+    recall = ratio(tp, tp + fn)
+    f1 = (
+        round(2 * precision * recall / (precision + recall), 4)
+        if precision is not None and recall is not None and (precision + recall) > 0
+        else None
+    )
+    return {
+        "samples": len(pairs),
+        "tp": tp, "fp": fp, "tn": tn, "fn": fn,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "false_positive_rate": ratio(fp, fp + tn),
+    }
+
+
+def get_admin_analytics(conn: sqlite3.Connection, bins: int = 10) -> dict[str, Any]:
+    """
+    Compare FSM, ML and hybrid scores across evaluated sessions.
+
+    Detector decision rules (a session is "flagged as bot" when):
+      - FSM:    fsm_score >= high threshold (HIGH band, 0.70 by default)
+      - ML:     the model's own anomaly decision (ml_is_anomaly)
+      - Hybrid: hybrid classification is HIGH
+    Sessions in INSUFFICIENT_EVIDENCE mode carry no evidence and are excluded
+    from score averages, histograms and detector metrics.
+    Precision/recall/F1/FPR are computed only over sessions with a ground-truth
+    label in session_labels; ML metrics only over sessions ML actually scored.
+    """
+    HybridConfig, _, ScoringMode, _ = _get_scoring_components()
+    cfg = HybridConfig()
+    high = cfg.high_threshold / 100.0
+
+    rows = conn.execute(
+        """
+        SELECT sr.*, sl.is_bot, sl.source AS label_source
+        FROM session_risks sr
+        LEFT JOIN session_labels sl ON sl.session_id = sr.session_id
+        """
+    ).fetchall()
+
+    scored = []
+    for r in rows:
+        interp = _interpret_risk_row(r)
+        if interp["scoring_mode"] == ScoringMode.INSUFFICIENT_EVIDENCE.value:
+            continue
+        scored.append({
+            "fsm": float(r["fsm_score"]),
+            "ml": interp["ml_score"],
+            "hybrid": float(r["risk_score"]),
+            "ml_flag": interp["ml_is_anomaly"],
+            "label": None if r["is_bot"] is None else int(r["is_bot"]),
+        })
+
+    def histogram(values: list[float]) -> list[int]:
+        counts = [0] * bins
+        for v in values:
+            counts[min(bins - 1, max(0, int(v * bins)))] += 1
+        return counts
+
+    def average(values: list[float]) -> float | None:
+        return round(sum(values) / len(values), 4) if values else None
+
+    fsm_vals = [s["fsm"] for s in scored]
+    ml_vals = [s["ml"] for s in scored if s["ml"] is not None]
+    hyb_vals = [s["hybrid"] for s in scored]
+
+    fsm_flag = [s["fsm"] >= high for s in scored]
+    hyb_flag = [s["hybrid"] >= high for s in scored]
+    ml_scored = [s for s in scored if s["ml"] is not None and s["ml_flag"] is not None]
+
+    labeled = [s for s in scored if s["label"] is not None]
+    labeled_ml = [s for s in labeled if s["ml"] is not None and s["ml_flag"] is not None]
+
+    label_counts = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(is_bot), 0) FROM session_labels"
+    ).fetchone()
+
+    return {
+        "evaluated_with_evidence": len(scored),
+        "ml_scored_sessions": len(ml_vals),
+        "thresholds": {"low": cfg.low_threshold / 100.0, "high": high},
+        "weights": {"fsm": cfg.fsm_weight, "ml": cfg.ml_weight},
+        "averages": {"fsm": average(fsm_vals), "ml": average(ml_vals), "hybrid": average(hyb_vals)},
+        "histograms": {
+            "bins": bins,
+            "fsm": histogram(fsm_vals),
+            "ml": histogram(ml_vals),
+            "hybrid": histogram(hyb_vals),
+        },
+        "detections": {
+            "fsm": sum(fsm_flag),
+            "ml": sum(1 for s in ml_scored if s["ml_flag"]),
+            "hybrid": sum(hyb_flag),
+            "fsm_and_ml": sum(1 for s in ml_scored if s["ml_flag"] and s["fsm"] >= high),
+        },
+        "labels": {
+            "total": int(label_counts[0] or 0),
+            "bots": int(label_counts[1] or 0),
+            "humans": int((label_counts[0] or 0) - (label_counts[1] or 0)),
+            "evaluated": len(labeled),
+        },
+        "labeled_metrics": {
+            "fsm": _binary_metrics([(s["label"], s["fsm"] >= high) for s in labeled]),
+            "ml": _binary_metrics([(s["label"], bool(s["ml_flag"])) for s in labeled_ml]),
+            "hybrid": _binary_metrics([(s["label"], s["hybrid"] >= high) for s in labeled]),
         },
     }

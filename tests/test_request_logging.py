@@ -338,6 +338,23 @@ def test_custom_excluded_paths(client, temp_db):
     assert len(reqs) == 0
 
 
+def test_automata_monitor_polling_not_logged(client, temp_db):
+    """The live monitor's status polling is never logged, even with custom exclusions."""
+    app.config["REQUEST_LOGGING_EXCLUDE_PATHS"] = {"/favicon.ico"}
+
+    for _ in range(3):
+        resp = client.get("/api/automata/status")
+        assert resp.status_code == 200
+    client.get("/about")
+
+    conn = get_connection(temp_db)
+    reqs = get_requests(conn)
+    conn.close()
+
+    # Only the page view is recorded; the three polls are not
+    assert [r["path"] for r in reqs] == ["/about"]
+
+
 def test_logging_disabled_flag(client, temp_db):
     """When REQUEST_LOGGING_ENABLED is False, no requests are recorded."""
     app.config["REQUEST_LOGGING_ENABLED"] = False

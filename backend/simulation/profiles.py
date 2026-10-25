@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import random
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
@@ -30,6 +31,49 @@ class SimulationStep:
     data: Optional[Dict[str, Any]] = None
     events: List[Dict[str, Any]] = field(default_factory=list)
     dwell_seconds: float = 0.0
+
+
+_TRACKER_EVENT_TYPES = {
+    "page_view": "PAGE_VIEW",
+    "click": "CLICK",
+    "scroll": "SCROLL",
+    "mouse_move": "MOUSE_ACTIVITY",
+    "mouse_activity": "MOUSE_ACTIVITY",
+    "keyboard": "KEYBOARD_ACTIVITY",
+    "keyboard_activity": "KEYBOARD_ACTIVITY",
+    "page_exit": "PAGE_EXIT",
+}
+
+
+def to_tracker_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Convert plan events into the exact wire format tracker.js sends to /api/events.
+
+    Plans describe telemetry loosely (lowercase names, epoch-ms timestamps, a
+    nested ``data`` dict). /api/events only accepts tracker.js's format, so
+    unconverted events are rejected with 400 and the simulated "human" would
+    look like a client with no JavaScript at all.
+    """
+    converted: List[Dict[str, Any]] = []
+    for ev in events:
+        raw_type = str(ev.get("event_type", ""))
+        event_type = _TRACKER_EVENT_TYPES.get(raw_type.lower(), raw_type.upper())
+        ts = ev.get("timestamp")
+        if isinstance(ts, (int, float)):
+            ts = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        out: Dict[str, Any] = {"event_type": event_type, "timestamp": ts, "page": ev.get("page", "")}
+        data = ev.get("data") or {}
+        if event_type == "CLICK":
+            out["element_type"] = str(data.get("tag", "")).lower()
+            out["element_id"] = str(data.get("id", ""))[:80]
+        elif event_type == "SCROLL":
+            max_y = data.get("max_scroll_y") or 0
+            pct = (100.0 * data.get("scroll_y", 0) / max_y) if max_y else 100.0
+            out["scroll_depth"] = min(100, int(round(pct / 5.0)) * 5)
+        elif event_type in ("MOUSE_ACTIVITY", "KEYBOARD_ACTIVITY"):
+            out["activity_count"] = int(data.get("activity_count", 1))
+        converted.append(out)
+    return converted
 
 
 class BaseBehavioralProfile:
@@ -183,7 +227,7 @@ class HumanProfile(BaseBehavioralProfile):
                 "event_type": "click",
                 "page": "/product/1",
                 "timestamp": now_ms + 140,
-                "data": {"tag": "BUTTON", "id": "btn-add-cart", "x": 530, "y": 440},
+                "data": {"tag": "BUTTON", "id": "add-to-cart-btn", "x": 530, "y": 440},
             },
         ]
         steps.append(SimulationStep(step_type="telemetry", events=detail_events))

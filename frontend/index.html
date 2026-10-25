@@ -190,17 +190,35 @@
   <div id="botshield-monitor" class="monitor-panel">
     <div class="monitor-panel__header">BOTSHIELD MONITOR</div>
     <div class="monitor-panel__body">
+      <div class="monitor-scores">
+        <div class="monitor-score">
+          <span class="monitor-label">FSM</span>
+          <span class="monitor-val" id="monitor-fsm">—</span>
+        </div>
+        <div class="monitor-score">
+          <span class="monitor-label">ML</span>
+          <span class="monitor-val" id="monitor-ml">—</span>
+        </div>
+        <div class="monitor-score monitor-score--hybrid">
+          <span class="monitor-label">Hybrid</span>
+          <span class="monitor-val" id="monitor-hybrid">—</span>
+        </div>
+      </div>
+      <div class="monitor-item">
+        <span class="monitor-label">Risk</span>
+        <span class="monitor-val" id="monitor-risk">LOW</span>
+      </div>
+      <div class="monitor-item">
+        <span class="monitor-label">Mode</span>
+        <span class="monitor-val" id="monitor-mode">—</span>
+      </div>
       <div class="monitor-item">
         <span class="monitor-label">Behavioral State</span>
         <span class="monitor-val" id="monitor-state">START</span>
       </div>
       <div class="monitor-item">
-        <span class="monitor-label">Automata Score</span>
-        <span class="monitor-val" id="monitor-score">0.00 / 1.00</span>
-      </div>
-      <div class="monitor-item">
-        <span class="monitor-label">Risk</span>
-        <span class="monitor-val" id="monitor-risk">LOW</span>
+        <span class="monitor-label">Live Automata</span>
+        <span class="monitor-val" id="monitor-score">START</span>
       </div>
       <div class="monitor-item">
         <span class="monitor-label">Signals</span>

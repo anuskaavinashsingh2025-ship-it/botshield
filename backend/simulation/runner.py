@@ -19,13 +19,14 @@ import urllib.error
 import urllib.request
 import uuid
 
-from backend.database.db import get_connection, upsert_session
+from backend.database.db import get_connection, upsert_session, upsert_session_label
 from backend.scoring.service import evaluate_session_risk
 from backend.simulation.profiles import (
     BaseBehavioralProfile,
     ProfileType,
     SimulationStep,
     get_profile,
+    to_tracker_events,
 )
 
 
@@ -157,10 +158,17 @@ class SimulationRunner:
             profile_type=profile.profile_type.value,
         )
 
-        # Register session in database so request_logger recognizes it as verified
+        # Register session in database so request_logger recognizes it as verified,
+        # and record its ground truth so the dashboard can measure detection quality.
         conn = get_connection(self.config.db_path)
         try:
             upsert_session(conn, session_id)
+            upsert_session_label(
+                conn,
+                session_id,
+                is_bot=profile.profile_type != ProfileType.HUMAN,
+                source=f"simulation:{profile.profile_type.value}",
+            )
             conn.commit()
         finally:
             conn.close()
@@ -241,8 +249,27 @@ class SimulationRunner:
             except urllib.error.HTTPError as exc:
                 return exc.code
 
+    @staticmethod
+    def _anchor_to_now(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Shift a page's telemetry so it starts when it is actually sent.
+
+        Plans are stamped when they are generated, but each page request is only
+        sent after its dwell, so plan timestamps drift ahead of the requests and
+        a PAGE_VIEW would appear before its own page load. A real browser fires
+        PAGE_VIEW after the page arrives; keep the in-page spacing, move the batch.
+        """
+        stamps = [e["timestamp"] for e in events if isinstance(e.get("timestamp"), (int, float))]
+        if not stamps:
+            return events
+        shift = time.time() * 1000.0 - min(stamps)
+        return [
+            dict(e, timestamp=e["timestamp"] + shift) if isinstance(e.get("timestamp"), (int, float)) else e
+            for e in events
+        ]
+
     def _send_telemetry(self, session_id: str, events: List[Dict[str, Any]]) -> int:
-        payload = {"session_id": session_id, "events": events}
+        payload = {"session_id": session_id, "events": to_tracker_events(self._anchor_to_now(events))}
         if self.config.mode == "in-process":
             assert self._client is not None
             self._client.set_cookie("botshield_session", session_id)

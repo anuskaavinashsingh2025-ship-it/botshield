@@ -248,13 +248,57 @@ def verify_admin_token(provided_token: str | None) -> tuple[bool, str]:
     return False, "INVALID_TOKEN"
 
 
+# ---------------------------------------------------------------------------
+# Local demo mode (no token) — opt-in, loopback-only, never in production
+# ---------------------------------------------------------------------------
+_LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1"})
+_PROXY_HEADERS = ("X-Forwarded-For", "X-Real-IP", "Forwarded")
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def is_demo_mode_enabled() -> bool:
+    """
+    True when BOTSHIELD_DEMO_MODE is set and the deployment is not marked production.
+
+    BOTSHIELD_ENV=production always disables demo mode, so a stray variable can
+    never remove authentication from a production deployment.
+    """
+    if os.environ.get("BOTSHIELD_ENV", "").strip().lower() == "production":
+        return False
+    configured = current_app.config.get("BOTSHIELD_DEMO_MODE")
+    if configured is not None:
+        return bool(configured)
+    return _env_flag("BOTSHIELD_DEMO_MODE")
+
+
+def is_demo_request(req: Request) -> bool:
+    """
+    Demo access applies only to requests made on this machine.
+
+    Requests from any other address, or relayed by a proxy (which could make a
+    remote client appear local), still require the administrator token.
+    """
+    if not is_demo_mode_enabled():
+        return False
+    if req.remote_addr not in _LOOPBACK_ADDRESSES:
+        return False
+    return not any(h in req.headers for h in _PROXY_HEADERS)
+
+
 def require_admin_auth(f):
     """
     Decorator enforcing administrator authentication on route endpoints.
     Protects both JSON API routes and HTML view routes.
+    In local demo mode, loopback requests are admitted without a token.
     """
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        if is_demo_request(request):
+            return f(*args, **kwargs)
+
         token_candidate = extract_admin_token(request)
         is_valid, reason = verify_admin_token(token_candidate)
 

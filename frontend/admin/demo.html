@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BotShield – Live Demo</title>
+  <style>
+    body { background: #0e0e10; color: #f0f0f2; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; }
+    a { color: inherit; }
+    .nav { background: #18181b; border-bottom: 1px solid #27272a; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .brand { font-weight: 700; font-size: 1.1rem; display: flex; gap: 0.75rem; align-items: center; }
+    .badge { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; padding: 0.2rem 0.5rem; border: 1px solid #c56a32; color: #e08a52; border-radius: 4px; }
+    .btn { background: #27272a; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 6px; padding: 0.45rem 0.85rem; font-size: 0.85rem; cursor: pointer; text-decoration: none; }
+    .btn:hover { background: #3f3f46; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn.primary { background: #c56a32; border-color: #c56a32; color: #fff; }
+    .btn.primary:hover { background: #d97a40; }
+    .btn.danger { border-color: rgba(239, 68, 68, 0.5); color: #f87171; }
+    main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+    h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+    .sub { color: #a1a1aa; font-size: 0.9rem; margin: 0 0 1.25rem; line-height: 1.5; }
+    .demo-banner { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; border-radius: 6px; padding: 0.6rem 1rem; font-size: 0.85rem; margin-bottom: 1.25rem; }
+    .panel { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1.25rem; }
+    .panel h2 { font-size: 1rem; margin: 0 0 0.9rem; }
+    .scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .scenario { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .scenario.active { border-color: #c56a32; }
+    .scenario h3 { margin: 0; font-size: 0.95rem; }
+    .scenario p { margin: 0; font-size: 0.8rem; color: #a1a1aa; line-height: 1.45; }
+    .scenario .expect { color: #71717a; }
+    .tag { font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; align-self: flex-start; }
+    .tag.bot { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+    .tag.human { background: rgba(34, 197, 94, 0.12); color: #4ade80; }
+    .live-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width: 960px) { .live-grid { grid-template-columns: 1fr; } main { padding: 1rem; } }
+    .run-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .run-title { font-weight: 700; }
+    .run-meta { font-size: 0.75rem; color: #71717a; margin-top: 0.2rem; word-break: break-all; }
+    .stage { background: #202024; border-left: 3px solid #c56a32; padding: 0.6rem 0.8rem; font-size: 0.9rem; border-radius: 4px; margin-bottom: 1rem; min-height: 1.2em; }
+    .scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+    .score { background: #202024; border-radius: 6px; padding: 0.75rem; }
+    .score .label { font-size: 0.7rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.06em; }
+    .score .value { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 0.15rem; }
+    .score .note { font-size: 0.72rem; color: #71717a; margin-top: 0.15rem; }
+    .fsm { color: #60a5fa; } .ml { color: #c084fc; } .hybrid { color: #fb923c; }
+    .risk { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px; }
+    .risk.LOW { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+    .risk.MEDIUM { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .risk.HIGH { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .chart { width: 100%; height: 220px; display: block; }
+    .legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #a1a1aa; margin-top: 0.4rem; flex-wrap: wrap; }
+    .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 0.35rem; vertical-align: middle; background: currentColor; }
+    .mono { font-family: "SF Mono", Menlo, monospace; }
+    .arith { font-family: "SF Mono", Menlo, monospace; font-size: 0.8rem; background: #202024; border-radius: 4px; padding: 0.5rem 0.75rem; margin-top: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; color: #a1a1aa; font-weight: 500; padding: 0.35rem 0.4rem; border-bottom: 1px solid #27272a; }
+    td { padding: 0.4rem; border-bottom: 1px solid #1f1f23; vertical-align: top; }
+    .muted { color: #71717a; font-size: 0.8rem; }
+    .log { max-height: 340px; overflow-y: auto; font-size: 0.8rem; }
+    .log-item { padding: 0.45rem 0; border-bottom: 1px solid #1f1f23; display: grid; grid-template-columns: 3.5rem 1fr; gap: 0.5rem; }
+    .log-item .t { color: #71717a; font-variant-numeric: tabular-nums; }
+    .log-item.stage .text { color: #e08a52; font-weight: 600; }
+    .section { margin-top: 1rem; }
+    .section h3 { font-size: 0.85rem; margin: 0 0 0.4rem; color: #e4e4e7; }
+    .disclaimer { font-size: 0.78rem; color: #a1a1aa; margin-top: 1.5rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="brand">BotShield <span class="badge">LIVE DEMO</span></div>
+    <div style="display: flex; gap: 0.5rem;">
+      <a class="btn" href="/admin/dashboard">SOC Dashboard</a>
+      <a class="btn" href="/" target="_blank">Storefront</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="demo-banner"><strong>LOCAL DEMO MODE</strong> — this page exists only in demo mode, for requests from this machine.</div>
+
+    <h1>Live detection scenarios</h1>
+    <p class="sub">
+      Start a scenario to send <strong>simulated</strong> traffic through the real storefront and detection pipeline.
+      Each run uses a fresh session (labeled <span class="mono">simulation:live-…</span>), is re-scored every half second,
+      and every change is explained from the evaluation itself.
+    </p>
+
+    <div class="scenario-grid" id="scenario-grid"></div>
+
+    <div class="live-grid">
+      <div class="panel">
+        <div class="run-head">
+          <div>
+            <div class="run-title" id="run-title">No scenario running</div>
+            <div class="run-meta" id="run-meta">Pick a scenario above.</div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span class="risk" id="run-risk"></span>
+            <button class="btn danger" id="btn-stop" disabled onclick="stopRun()">Stop</button>
+          </div>
+        </div>
+        <div class="stage" id="run-stage">—</div>
+
+        <div class="scores">
+          <div class="score"><div class="label">FSM score</div><div class="value fsm" id="v-fsm">—</div><div class="note" id="n-fsm">rule-based</div></div>
+          <div class="score"><div class="label">ML score</div><div class="value ml" id="v-ml">—</div><div class="note" id="n-ml">anomaly score</div></div>
+          <div class="score"><div class="label">Hybrid score</div><div class="value hybrid" id="v-hybrid">—</div><div class="note" id="n-hybrid">0.60·FSM + 0.40·ML</div></div>
+        </div>
+
+        <svg class="chart" id="chart" viewBox="0 0 640 220" preserveAspectRatio="none" role="img" aria-label="Score timeline"></svg>
+        <div class="legend">
+          <span class="fsm">FSM</span><span class="ml">ML</span><span class="hybrid">Hybrid</span>
+          <span style="color:#52525b">MEDIUM / HIGH bands (0.35 / 0.70)</span>
+          <span style="color:#a855f7">ML threshold (dashed)</span>
+        </div>
+        <div class="arith" id="arith">—</div>
+      </div>
+
+      <div class="panel">
+        <h2>What happened, and why</h2>
+        <div class="log" id="log"><div class="muted">Events and score changes appear here as the scenario runs.</div></div>
+      </div>
+    </div>
+
+    <div class="live-grid">
+      <div class="panel">
+        <h2>FSM — rules that fired</h2>
+        <div id="fsm-detail" class="muted">No evaluation yet.</div>
+        <div class="section">
+          <h3>ML — inputs furthest from the training data</h3>
+          <div id="ml-detail" class="muted">No evaluation yet.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Try it from this browser</h2>
+        <p class="sub" style="margin-bottom: 0.75rem;">
+          Sends 20 real page requests from <em>your</em> browser in about one second, using a fresh session
+          so your normal browsing history is not mixed in. This is real (unlabeled) traffic, not simulated.
+        </p>
+        <button class="btn primary" id="btn-burst" onclick="burstFromBrowser()">Send a burst from this browser</button>
+        <div id="me-detail" class="section muted">Your session has not been scored yet.</div>
+      </div>
+    </div>
+
+    <p class="disclaimer">
+      Scenarios are simulated. Scores describe automation-like behavior and are not proof that anyone is a bot, a fraudster or a scammer.
+      The ML model is an Isolation Forest trained on simulated human sessions; its "unusual inputs" show how a session differs from that
+      training data and are not a causal explanation of the score. When the FSM score is 0, the hybrid score can be at most 0.40 × ML.
+    </p>
+  </main>
+
+  <script>
+    let scenarios = [];
+    let currentRun = null;
+    let logSince = 0;
+    let pollTimer = null;
+
+    function esc(s) {
+      return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function fmt(v) { return (v === null || v === undefined) ? "N/A" : Number(v).toFixed(2); }
+
+    async function api(url, options = {}) {
+      const res = await fetch(url, { credentials: "same-origin", ...options });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || res.statusText);
+      return data;
+    }
+
+    async function loadScenarios() {
+      const data = await api("/admin/api/demo/scenarios");
+      scenarios = data.scenarios;
+      document.getElementById("scenario-grid").innerHTML = scenarios.map(s => `
+        <div class="scenario" id="sc-${s.id}">
+          <span class="tag ${s.is_bot ? "bot" : "human"}">${s.is_bot ? "SIMULATED BOT" : "SIMULATED HUMAN"}</span>
+          <h3>${esc(s.title)}</h3>
+          <p>${esc(s.summary)}</p>
+          <p class="expect">Expect: ${esc(s.expect)}</p>
+          <button class="btn primary" onclick="startRun('${s.id}')">Start</button>
+        </div>`).join("");
+    }
+
+    async function startRun(id) {
+      try {
+        const data = await api("/admin/api/demo/runs", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scenario: id }),
+        });
+        currentRun = data.run;
+        logSince = 0;
+        document.getElementById("log").innerHTML = "";
+        document.querySelectorAll(".scenario").forEach(el => el.classList.toggle("active", el.id === "sc-" + id));
+        render(currentRun);
+        schedulePoll();
+      } catch (err) {
+        alert("Could not start scenario: " + err.message);
+      }
+    }
+
+    async function stopRun() {
+      if (!currentRun) return;
+      await api(`/admin/api/demo/runs/${currentRun.run_id}/stop`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      }).catch(() => {});
+    }
+
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(poll, 700);
+    }
+
+    async function poll() {
+      if (!currentRun) return;
+      try {
+        const data = await api(`/admin/api/demo/runs/${currentRun.run_id}?since=${logSince}`);
+        currentRun = data.run;
+        appendLog(currentRun.log);
+        logSince = currentRun.log_total;
+        render(currentRun);
+        if (currentRun.status === "running") schedulePoll();
+      } catch (err) {
+        schedulePoll();
+      }
+    }
+
+    function appendLog(entries) {
+      const box = document.getElementById("log");
+      entries.forEach(e => {
+        const div = document.createElement("div");
+        div.className = "log-item " + e.kind;
+        div.innerHTML = `<span class="t">${e.t.toFixed(1)}s</span><span class="text">${esc(e.text)}</span>`;
+        box.prepend(div);
+      });
+    }
+
+    function render(run) {
+      document.getElementById("run-title").textContent = `${run.title} — ${run.status}`;
+      document.getElementById("run-meta").innerHTML =
+        `Session <span class="mono">${esc(run.session_id)}</span> · label <span class="mono">${esc(run.label)}</span> · ${run.elapsed}s · expect: ${esc(run.expect)}`;
+      document.getElementById("run-stage").textContent = run.error || run.stage || "—";
+      document.getElementById("btn-stop").disabled = run.status !== "running";
+      drawChart(run.timeline, run.latest);
+      const x = run.latest;
+      if (!x) return;
+      setScores(x, "v-", "n-");
+      const risk = document.getElementById("run-risk");
+      risk.className = "risk " + x.hybrid.risk_level;
+      risk.textContent = x.hybrid.risk_level;
+      document.getElementById("arith").textContent =
+        `${x.hybrid.arithmetic}  →  ${x.hybrid.risk_level} (MEDIUM ≥ ${x.hybrid.thresholds.medium}, HIGH ≥ ${x.hybrid.thresholds.high})`;
+      renderDetail(x, "fsm-detail", "ml-detail");
+    }
+
+    function setScores(x, vp, np) {
+      document.getElementById(vp + "fsm").textContent = fmt(x.fsm.score);
+      document.getElementById(np + "fsm").textContent = `state ${x.fsm.state} · ${x.fsm.rules.length} rule(s)`;
+      document.getElementById(vp + "ml").textContent = fmt(x.ml.score);
+      document.getElementById(np + "ml").textContent = x.ml.score === null
+        ? `ML ${x.ml.status}`
+        : `${x.ml.is_anomaly ? "above" : "below"} threshold ${fmt(x.ml.threshold)}`;
+      document.getElementById(vp + "hybrid").textContent = fmt(x.hybrid.score);
+      document.getElementById(np + "hybrid").textContent = `${x.hybrid.mode} · ${x.hybrid.risk_level}`;
+    }
+
+    function renderDetail(x, fsmId, mlId) {
+      const f = x.fsm;
+      let fsmHtml = f.rules.length === 0
+        ? `<p class="muted">No rule fired — FSM score 0. State: <span class="mono">${esc(f.state)}</span>.</p>`
+        : `<table><thead><tr><th>Rule</th><th>Points</th><th>Evidence</th></tr></thead><tbody>` +
+          f.rules.map(r => `<tr><td>${esc(r.title)}</td><td class="mono">+${r.penalty.toFixed(2)}</td><td>${esc(r.explanation)}</td></tr>`).join("") +
+          `</tbody></table><p class="muted" style="margin-top:0.4rem;">Sum ${f.raw_total.toFixed(2)}` +
+          (f.recovery_factor ? ` × ${f.recovery_factor} (human recovery)` : "") +
+          `, capped at 1.0 → FSM ${f.score.toFixed(2)} · state <span class="mono">${esc(f.state)}</span></p>`;
+      document.getElementById(fsmId).innerHTML = fsmHtml;
+
+      const m = x.ml;
+      let mlHtml;
+      if (m.score === null) {
+        mlHtml = `<p class="muted">ML did not score this session (${esc(m.status)}); hybrid uses FSM only.</p>`;
+      } else {
+        mlHtml = `<p style="font-size:0.85rem;margin:0 0 0.4rem;">Score <strong class="ml">${fmt(m.score)}</strong> vs threshold ${fmt(m.threshold)} →
+          <strong>${m.is_anomaly ? "anomalous" : "normal"}</strong></p>` +
+          `<table><thead><tr><th>Input</th><th>This session</th><th>Typical (training)</th></tr></thead><tbody>` +
+          m.unusual_inputs.map(u => `<tr><td class="mono">${esc(u.feature)}</td><td>${u.value}</td><td>${u.typical} (${u.direction})</td></tr>`).join("") +
+          `</tbody></table>`;
+      }
+      document.getElementById(mlId).innerHTML = mlHtml;
+    }
+
+    function drawChart(points, latest) {
+      const svg = document.getElementById("chart");
+      const W = 640, H = 220, P = 24;
+      const tMax = Math.max(10, ...points.map(p => p.t));
+      const xs = t => P + (t / tMax) * (W - 2 * P);
+      const ys = v => H - P - v * (H - 2 * P);
+      let s = "";
+      [0.35, 0.70].forEach(b => { s += `<line x1="${P}" x2="${W - P}" y1="${ys(b)}" y2="${ys(b)}" stroke="#3f3f46" stroke-width="1"/>`; });
+      [0, 0.5, 1].forEach(v => { s += `<text x="2" y="${ys(v) + 4}" fill="#71717a" font-size="10">${v}</text>`; });
+      if (latest && latest.ml.threshold) {
+        s += `<line x1="${P}" x2="${W - P}" y1="${ys(latest.ml.threshold)}" y2="${ys(latest.ml.threshold)}" stroke="#a855f7" stroke-dasharray="4 4" stroke-width="1" opacity="0.6"/>`;
+      }
+      const line = (key, color) => {
+        const pts = points.filter(p => p[key] !== null && p[key] !== undefined).map(p => `${xs(p.t).toFixed(1)},${ys(p[key]).toFixed(1)}`);
+        if (pts.length) s += `<polyline fill="none" stroke="${color}" stroke-width="2.2" points="${pts.join(" ")}"/>`;
+      };
+      line("fsm", "#60a5fa"); line("ml", "#c084fc"); line("hybrid", "#fb923c");
+      s += `<text x="${W - P}" y="${H - 6}" fill="#71717a" font-size="10" text-anchor="end">${tMax.toFixed(0)}s</text>`;
+      svg.innerHTML = s;
+    }
+
+    // --- Try it from this browser -------------------------------------------
+    function newSessionId() {
+      return (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => (Math.random() * 16 | 0).toString(16)));
+    }
+
+    async function burstFromBrowser() {
+      const btn = document.getElementById("btn-burst");
+      btn.disabled = true;
+      const box = document.getElementById("me-detail");
+      try {
+        // Fresh session in this browser (the storefront tracker reuses it afterwards)
+        const sid = newSessionId();
+        try { localStorage.setItem("botshield_session_id", sid); } catch (e) {}
+        document.cookie = `botshield_session=${sid}; path=/; SameSite=Lax`;
+        document.cookie = `botshield_session_id=${sid}; path=/; max-age=31536000; SameSite=Lax`;
+        await api("/api/events", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sid, events: [{ event_type: "PAGE_VIEW", page: "/admin/demo", timestamp: new Date().toISOString() }] }),
+        });
+        box.innerHTML = `<p>Sending 20 requests from session <span class="mono">${sid}</span>…</p>`;
+        const pages = ["/", "/products", "/product/1", "/product/2", "/product/3", "/product/4", "/product/5", "/product/6", "/about", "/products"];
+        // Back-to-back requests, no timers: background tabs throttle setTimeout
+        // to ~1 s, which would turn the burst into slow browsing.
+        const started = performance.now();
+        for (let i = 0; i < 20; i++) {
+          await fetch(pages[i % pages.length], { credentials: "same-origin" });
+        }
+        const seconds = ((performance.now() - started) / 1000).toFixed(2);
+        const data = await api("/admin/api/demo/me");
+        if (!data.available) { box.textContent = data.message; return; }
+        const x = data.explanation;
+        box.innerHTML = `
+          <p class="muted">Sent 20 requests in ${seconds}s from session <span class="mono">${esc(sid)}</span>.</p>
+          <div class="scores" style="margin-top:0.5rem;">
+            <div class="score"><div class="label">FSM</div><div class="value fsm" id="m-fsm"></div><div class="note" id="mn-fsm"></div></div>
+            <div class="score"><div class="label">ML</div><div class="value ml" id="m-ml"></div><div class="note" id="mn-ml"></div></div>
+            <div class="score"><div class="label">Hybrid</div><div class="value hybrid" id="m-hybrid"></div><div class="note" id="mn-hybrid"></div></div>
+          </div>
+          <div class="arith">${esc(x.hybrid.arithmetic)} → ${esc(x.hybrid.risk_level)}</div>
+          <div id="me-fsm" class="section"></div><div id="me-ml" class="section"></div>
+          <p class="muted">Your browser now uses this new session on the storefront too.</p>`;
+        setScores(x, "m-", "mn-");
+        renderDetail(x, "me-fsm", "me-ml");
+      } catch (err) {
+        box.textContent = "Burst failed: " + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    loadScenarios().catch(err => {
+      document.getElementById("scenario-grid").innerHTML = `<p class="muted">Could not load scenarios: ${esc(err.message)}</p>`;
+    });
+  </script>
+</body>
+</html>
